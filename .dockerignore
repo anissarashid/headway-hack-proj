@@ -1,0 +1,31 @@
+# The pitctl image builds from the repo root, because its Dockerfile has to reach
+# pit/ and a build context cannot escape its own directory. That makes the whole
+# repo the context, so everything the image does not need is excluded here --
+# otherwise every `docker build` ships the virtualenvs, which are thousands of
+# files and hundreds of megabytes of the daemon's time.
+
+# Virtualenvs and caches. Reinstalled from uv.lock inside the image, so sending
+# them is both slow and wrong -- a macOS venv is useless on a linux base.
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+
+# Git history.
+.git/
+.gitignore
+
+# Helm dependency archives, reproducible from Chart.lock. The charts are applied
+# to the cluster, never built into an image.
+charts/**/charts/*.tgz
+*.rendered.yaml
+
+# Nothing in the image reads these.
+.claude/
+README.md
+spikes/
+
+# macOS
+.DS_Store

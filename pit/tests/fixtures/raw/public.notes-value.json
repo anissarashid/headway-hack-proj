@@ -1,0 +1,280 @@
+{
+  "connect.name": "raw.public.notes.Envelope",
+  "connect.version": 2,
+  "fields": [
+    {
+      "default": null,
+      "name": "before",
+      "type": [
+        "null",
+        {
+          "connect.name": "raw.public.notes.Value",
+          "fields": [
+            {
+              "name": "note_id",
+              "type": "long"
+            },
+            {
+              "name": "patient_id",
+              "type": "long"
+            },
+            {
+              "name": "provider_id",
+              "type": "long"
+            },
+            {
+              "default": null,
+              "name": "appointment_id",
+              "type": [
+                "null",
+                "long"
+              ]
+            },
+            {
+              "default": null,
+              "name": "amends_note_id",
+              "type": [
+                "null",
+                "long"
+              ]
+            },
+            {
+              "default": "progress",
+              "name": "note_type",
+              "type": {
+                "connect.default": "progress",
+                "type": "string"
+              }
+            },
+            {
+              "name": "body",
+              "type": "string"
+            },
+            {
+              "default": "1970-01-01T00:00:00.000000Z",
+              "name": "authored_at",
+              "type": {
+                "connect.default": "1970-01-01T00:00:00.000000Z",
+                "connect.name": "io.debezium.time.ZonedTimestamp",
+                "connect.version": 1,
+                "type": "string"
+              }
+            },
+            {
+              "default": null,
+              "name": "signed_at",
+              "type": [
+                "null",
+                {
+                  "connect.name": "io.debezium.time.ZonedTimestamp",
+                  "connect.version": 1,
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "default": false,
+              "name": "is_amended",
+              "type": {
+                "connect.default": false,
+                "type": "boolean"
+              }
+            },
+            {
+              "default": "1970-01-01T00:00:00.000000Z",
+              "name": "created_at",
+              "type": {
+                "connect.default": "1970-01-01T00:00:00.000000Z",
+                "connect.name": "io.debezium.time.ZonedTimestamp",
+                "connect.version": 1,
+                "type": "string"
+              }
+            },
+            {
+              "default": "1970-01-01T00:00:00.000000Z",
+              "name": "updated_at",
+              "type": {
+                "connect.default": "1970-01-01T00:00:00.000000Z",
+                "connect.name": "io.debezium.time.ZonedTimestamp",
+                "connect.version": 1,
+                "type": "string"
+              }
+            }
+          ],
+          "name": "Value",
+          "type": "record"
+        }
+      ]
+    },
+    {
+      "default": null,
+      "name": "after",
+      "type": [
+        "null",
+        "Value"
+      ]
+    },
+    {
+      "name": "source",
+      "type": {
+        "connect.name": "io.debezium.connector.postgresql.Source",
+        "fields": [
+          {
+            "name": "version",
+            "type": "string"
+          },
+          {
+            "name": "connector",
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "ts_ms",
+            "type": "long"
+          },
+          {
+            "default": "false",
+            "name": "snapshot",
+            "type": [
+              {
+                "connect.default": "false",
+                "connect.name": "io.debezium.data.Enum",
+                "connect.parameters": {
+                  "allowed": "true,last,false,incremental"
+                },
+                "connect.version": 1,
+                "type": "string"
+              },
+              "null"
+            ]
+          },
+          {
+            "name": "db",
+            "type": "string"
+          },
+          {
+            "default": null,
+            "name": "sequence",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          {
+            "default": null,
+            "name": "ts_us",
+            "type": [
+              "null",
+              "long"
+            ]
+          },
+          {
+            "default": null,
+            "name": "ts_ns",
+            "type": [
+              "null",
+              "long"
+            ]
+          },
+          {
+            "name": "schema",
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "type": "string"
+          },
+          {
+            "default": null,
+            "name": "txId",
+            "type": [
+              "null",
+              "long"
+            ]
+          },
+          {
+            "default": null,
+            "name": "lsn",
+            "type": [
+              "null",
+              "long"
+            ]
+          },
+          {
+            "default": null,
+            "name": "xmin",
+            "type": [
+              "null",
+              "long"
+            ]
+          }
+        ],
+        "name": "Source",
+        "namespace": "io.debezium.connector.postgresql",
+        "type": "record"
+      }
+    },
+    {
+      "default": null,
+      "name": "transaction",
+      "type": [
+        "null",
+        {
+          "connect.name": "event.block",
+          "connect.version": 1,
+          "fields": [
+            {
+              "name": "id",
+              "type": "string"
+            },
+            {
+              "name": "total_order",
+              "type": "long"
+            },
+            {
+              "name": "data_collection_order",
+              "type": "long"
+            }
+          ],
+          "name": "block",
+          "namespace": "event",
+          "type": "record"
+        }
+      ]
+    },
+    {
+      "name": "op",
+      "type": "string"
+    },
+    {
+      "default": null,
+      "name": "ts_ms",
+      "type": [
+        "null",
+        "long"
+      ]
+    },
+    {
+      "default": null,
+      "name": "ts_us",
+      "type": [
+        "null",
+        "long"
+      ]
+    },
+    {
+      "default": null,
+      "name": "ts_ns",
+      "type": [
+        "null",
+        "long"
+      ]
+    }
+  ],
+  "name": "Envelope",
+  "namespace": "raw.public.notes",
+  "type": "record"
+}

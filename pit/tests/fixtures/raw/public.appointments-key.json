@@ -1,0 +1,12 @@
+{
+  "connect.name": "raw.public.appointments.Key",
+  "fields": [
+    {
+      "name": "appointment_id",
+      "type": "long"
+    }
+  ],
+  "name": "Key",
+  "namespace": "raw.public.appointments",
+  "type": "record"
+}

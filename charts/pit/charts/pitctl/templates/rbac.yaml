@@ -1,0 +1,72 @@
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "pitctl.serviceAccountName" . }}
+  labels:
+    {{- include "pitctl.labels" . | nindent 4 }}
+{{- end }}
+{{- if .Values.rbac.create }}
+---
+# The Role exists to pause one process, not to administer the cluster.
+#
+# `CREATE DATABASE ... TEMPLATE pit_base` fails while any connection to pit_base
+# is open, and pit-tail holds one. So M7's snapshot CronJob scales this Deployment
+# to zero, cuts the clone, and scales it back -- which needs `update` on
+# deployments/scale.
+#
+# Scoped three ways, because this is the one credential in the project that can
+# change cluster state:
+#
+#   * to `apps/deployments/scale` -- the scale subresource, not the Deployment
+#     itself, so the holder cannot edit the pod template or its image;
+#   * to reading and writing that one subresource -- no create, no delete, no list;
+#   * to `resourceNames: [pit-tail]` -- this one Deployment. Without it the same
+#     verbs would apply to every Deployment in the namespace, which includes
+#     connect and deid.
+#
+# A Role and not a ClusterRole: it is bound in this namespace and has no business
+# outside it.
+#
+# **`patch` is required, and `update` alone is not.** DATA-716 specifies "get and
+# update on deployments/scale", and that does not work: `kubectl scale` sends a
+# PATCH, so with only `update` the command is Forbidden -- while
+# `kubectl auth can-i update deployments/x --subresource=scale` still answers yes,
+# which makes the gap look like it is not there. `update` is kept because a client
+# library that does a read-modify-write PUT is equally legitimate, and M7's CronJob
+# may well use one.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "pitctl.tailName" . }}-scale
+  labels:
+    {{- include "pitctl.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: [{{ include "pitctl.tailName" . | quote }}]
+    verbs: ["get", "patch", "update"]
+  # `kubectl scale` reads the Deployment before it writes the scale subresource,
+  # so `get` on the Deployment is required too -- without it the command fails
+  # before it ever reaches the subresource above. Read-only, and still scoped to
+  # the one name.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: [{{ include "pitctl.tailName" . | quote }}]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "pitctl.tailName" . }}-scale
+  labels:
+    {{- include "pitctl.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "pitctl.tailName" . }}-scale
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "pitctl.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

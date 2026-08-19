@@ -1,0 +1,12 @@
+{
+  "connect.name": "raw.public.patients.Key",
+  "fields": [
+    {
+      "name": "patient_id",
+      "type": "long"
+    }
+  ],
+  "name": "Key",
+  "namespace": "raw.public.patients",
+  "type": "record"
+}

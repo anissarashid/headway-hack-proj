@@ -1,0 +1,12 @@
+{
+  "connect.name": "raw.public.notes.Key",
+  "fields": [
+    {
+      "name": "note_id",
+      "type": "long"
+    }
+  ],
+  "name": "Key",
+  "namespace": "raw.public.notes",
+  "type": "record"
+}

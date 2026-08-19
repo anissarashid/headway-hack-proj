@@ -1,0 +1,12 @@
+{
+  "connect.name": "clean.public.notes.Key",
+  "fields": [
+    {
+      "name": "note_id",
+      "type": "string"
+    }
+  ],
+  "name": "Key",
+  "namespace": "clean.public.notes",
+  "type": "record"
+}

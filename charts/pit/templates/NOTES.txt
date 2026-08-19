@@ -6,6 +6,14 @@ Subcharts enabled:
   - connect (Debezium, raw.* topics with Avro schemas in the registry){{ end }}
 {{- if index .Values "sink-pg" "enabled" }}
   - sink-pg (Postgres {{ (index .Subcharts "sink-pg").Chart.AppVersion }}, plain replay target){{ end }}
+{{- if index .Values "deid" "enabled" }}
+  - deid (raw.* -> clean.*, de-identified per deid/policy/clinic.yml){{ end }}
+{{- if index .Values "pitctl" "enabled" }}
+  - pitctl ({{ index .Values "pitctl" "tail" "name" | default "pit-tail" }}, keeping {{ index .Values "pitctl" "tail" "database" | default "pit_base" }} current){{ end }}
 
 Run `make verify` to check the source database is ready and decoding logically.
 `make verify-sink` checks the sink is up and its user is a superuser.
+{{- if index .Values "pitctl" "enabled" }}
+`make pitctl-check` checks the tail runs and can scale itself to zero, which is
+what a snapshot needs of it.
+{{- end }}

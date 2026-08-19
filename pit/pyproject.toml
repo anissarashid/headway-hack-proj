@@ -1,0 +1,35 @@
+[project]
+name = "pit"
+version = "0.1.0"
+description = "The pit CLI: build a point-in-time de-identified Postgres replica"
+requires-python = ">=3.11"
+
+# psycopg only, for now. The registry client is stdlib urllib: the whole of what
+# this package asks of the registry is "GET me the latest schema for a subject",
+# and a dependency that exists to spell one GET more prettily is a dependency
+# that has to be pinned, audited and shipped in the pitctl image.
+#
+# The Kafka client (confluent-kafka, for AvroDeserializer and offsets_for_times)
+# arrives with `pit tail`'s consumer in DATA-715's second half. M4 needs the same
+# library, so whichever milestone lands first pins the version and the other
+# matches it.
+dependencies = [
+  "psycopg[binary]>=3.2,<4",
+]
+
+[project.scripts]
+pit = "pit.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.2"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

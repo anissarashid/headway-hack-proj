@@ -1,0 +1,12 @@
+{
+  "connect.name": "clean.public.providers.Key",
+  "fields": [
+    {
+      "name": "provider_id",
+      "type": "string"
+    }
+  ],
+  "name": "Key",
+  "namespace": "clean.public.providers",
+  "type": "record"
+}

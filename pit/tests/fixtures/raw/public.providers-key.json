@@ -1,0 +1,12 @@
+{
+  "connect.name": "raw.public.providers.Key",
+  "fields": [
+    {
+      "name": "provider_id",
+      "type": "long"
+    }
+  ],
+  "name": "Key",
+  "namespace": "raw.public.providers",
+  "type": "record"
+}
