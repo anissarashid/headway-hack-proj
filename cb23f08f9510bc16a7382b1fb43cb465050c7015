@@ -1,0 +1,49 @@
+hack/verify.sh
+  s_bb37ac049dbe18::t_67b762bff3554b 1-4,7-22,24-36,38-41,44-51
+  s_bb37ac049dbe18::t_129c8926cfe150 23,37
+  s_bb37ac049dbe18::t_8e21bfc4da5509 5-6,42-43
+README.md
+  s_bb37ac049dbe18::t_129c8926cfe150 113,117-118,123,149-150
+  s_bb37ac049dbe18::t_088cd6efe3c48b 119
+  s_bb37ac049dbe18::t_525246155506ae 121-122,124-125,127,130
+  s_bb37ac049dbe18::t_8cdf9400a227b4 72-73,93-98,120
+  s_bb37ac049dbe18::t_160f99093e80fb 47-53
+  s_bb37ac049dbe18::t_95ad190ee7f97d 126,128-129,131-148,151-161
+images/pitctl/Dockerfile
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-25
+images/deid/Dockerfile
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-25
+images/pitctl/entrypoint.sh
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-8
+images/connect/Dockerfile
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-21
+Makefile
+  s_bb37ac049dbe18::t_d5bf09a075f5af 32-34,130-134,177,180
+  s_bb37ac049dbe18::t_2247b8caebf11b 178-179,181-182
+  s_bb37ac049dbe18::t_99f8d99e1a16cd 169
+hack/forward.sh
+  s_bb37ac049dbe18::t_67b762bff3554b 1-10,13-16,18-19,22,25-60
+  s_bb37ac049dbe18::t_129c8926cfe150 20-21
+  s_bb37ac049dbe18::t_8e21bfc4da5509 11-12,17,23-24
+images/deid/entrypoint.sh
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "cb23f08f9510bc16a7382b1fb43cb465050c7015",
+  "prompts": {},
+  "sessions": {
+    "s_bb37ac049dbe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "71495df7-2d13-4494-a0d5-d0de08aa8595",
+        "model": "claude-opus-5"
+      },
+      "human_author": null,
+      "custom_attributes": {
+        "runtime": "local"
+      }
+    }
+  }
+}
