@@ -1,0 +1,35 @@
+Makefile
+  s_a9e89b74a0e4b6::t_67cde693779298 75-87,89
+README.md
+  s_a9e89b74a0e4b6::t_814c25768e7072 11-16,32,86-195
+charts/pit/charts/source-pg/files/initdb/20-clinic-schema.sql
+  s_a9e89b74a0e4b6::t_90b484e6f09d83 1-155
+charts/pit/charts/source-pg/files/initdb/21-history-triggers.sql
+  s_a9e89b74a0e4b6::t_daf1275d6b74e4 1-209
+charts/pit/charts/source-pg/templates/NOTES.txt
+  s_a9e89b74a0e4b6::t_665f700a939f97 9-19
+charts/pit/charts/source-pg/templates/configmap-initdb.yaml
+  s_a9e89b74a0e4b6::t_3dcb37d413a61b 20-22,31-40
+charts/pit/charts/source-pg/values.yaml
+  s_a9e89b74a0e4b6::t_a1d9579cdbc9d0 51-56,59
+scripts/verify-conf-docker.sh
+  s_a9e89b74a0e4b6::t_695b054668c0af 117-141
+scripts/verify-schema.sql
+  s_a9e89b74a0e4b6::t_41f246c52d69de 1-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "ea654f497a827633f8ea2ae166553db0fdcdbf66",
+  "prompts": {},
+  "sessions": {
+    "s_a9e89b74a0e4b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "893541c0-e693-4bf5-b97f-86efc66753f4",
+        "model": "unknown"
+      },
+      "human_author": "Anissa Rashid <anissarashid@users.noreply.github.com>"
+    }
+  }
+}

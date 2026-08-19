@@ -1,0 +1,19 @@
+charts/pit/values-local.yaml
+  s_925a65c6deab5d::t_f4d1627933fdd3 39-41,45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "21a2b5560f085e266b388a90e522da188a754d00",
+  "prompts": {},
+  "sessions": {
+    "s_925a65c6deab5d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b462c9c-d701-4d69-9e99-a9abb6f45cdc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Darren Liu <dliu9999@gmail.com>"
+    }
+  }
+}

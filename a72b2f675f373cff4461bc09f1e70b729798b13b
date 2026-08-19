@@ -1,0 +1,41 @@
+loadgen/src/loadgen/fingerprint.py
+  s_56c66dc67b670f::t_88c5cc7adddaca 1-207
+loadgen/README.md
+  s_56c66dc67b670f::t_7fd19d2a998fcd 1-19,21-151
+loadgen/src/loadgen/vocab.py
+  s_56c66dc67b670f::t_2328f347a61ee7 1-270
+loadgen/tests/test_seed.py
+  s_56c66dc67b670f::t_f85fdbfb0cf395 1-284,286-339
+loadgen/src/loadgen/__init__.py
+  s_56c66dc67b670f::t_33cd44109d3142 1-7
+loadgen/src/loadgen/config.py
+  s_56c66dc67b670f::t_6ffbd6a9e9b159 1-143,145-157
+Makefile
+  s_56c66dc67b670f::t_6eed5db07647ff 192,198-199,201-202,205-207,209-211,213-219,221,227-235,237-238
+README.md
+  s_56c66dc67b670f::t_e6a823ef51f4e9 62,270-278,280-302
+loadgen/pyproject.toml
+  s_56c66dc67b670f::t_889f1f9d5a92d7 1-31
+loadgen/uv.lock
+  s_56c66dc67b670f::t_dd8c0fdf71b36c 1-190
+loadgen/src/loadgen/seed.py
+  s_56c66dc67b670f::t_e18a890eeacad8 1-1141
+.gitignore
+  s_56c66dc67b670f::t_c6afc9a2112ffb 8-11,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "a72b2f675f373cff4461bc09f1e70b729798b13b",
+  "prompts": {},
+  "sessions": {
+    "s_56c66dc67b670f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54a34beb-314b-4373-93ce-0e4ee20e9b65",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Anissa Rashid <anissarashid@users.noreply.github.com>"
+    }
+  }
+}
