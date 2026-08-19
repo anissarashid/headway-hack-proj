@@ -1,0 +1,38 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "tasks.max": "1",
+
+  "plugin.name": "pgoutput",
+  "topic.prefix": "raw",
+
+  "database.hostname": "pit-source-pg",
+  "database.port": "5432",
+  "database.user": "debezium",
+  "database.password": "debezium-dev-password",
+  "database.dbname": "pit",
+
+  "schema.include.list": "public",
+  "table.include.list": "public.patients,public.providers,public.appointments,public.claims,public.notes",
+
+  "slot.name": "pit_debezium",
+  "publication.name": "dbz_publication",
+  "publication.autocreate.mode": "disabled",
+  "snapshot.mode": "initial",
+  "tombstones.on.delete": "false",
+
+  "key.converter": "io.confluent.connect.avro.AvroConverter",
+  "key.converter.schema.registry.url": "http://pit-redpanda:8081",
+  "value.converter": "io.confluent.connect.avro.AvroConverter",
+  "value.converter.schema.registry.url": "http://pit-redpanda:8081",
+
+  "enhanced.avro.schema.support": "true",
+  "time.precision.mode": "connect",
+  "decimal.handling.mode": "precise",
+  "field.name.adjustment.mode": "avro",
+
+  "topic.creation.enable": "true",
+  "topic.creation.default.replication.factor": "1",
+  "topic.creation.default.partitions": "1",
+  "topic.creation.default.cleanup.policy": "delete",
+  "topic.creation.default.retention.ms": "-1"
+}

@@ -1,0 +1,50 @@
+image:
+  repository: pit/connect
+  tag: dev
+  # Never: the image is side-loaded into minikube with `minikube image load`,
+  # so there is nothing to pull and IfNotPresent would still try on a miss.
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8083
+
+# The broker the worker talks to (internal Kafka listener).
+kafka:
+  bootstrapServers: pit-redpanda:9093
+
+# Registry the per-connector Avro converters point at. Also injected into the
+# connector JSON is fine; kept here so the worker default matches.
+schemaRegistryUrl: http://pit-redpanda:8081
+
+# Kafka Connect worker identity + internal storage topics. Single broker, so
+# every internal topic is RF 1 — the Connect defaults of 3 would wedge on one
+# broker. These three topics are compacted by Connect at creation.
+worker:
+  groupId: pit-connect
+  configStorageTopic: pit-connect-configs
+  offsetStorageTopic: pit-connect-offsets
+  statusStorageTopic: pit-connect-status
+  replicationFactor: 1
+  offsetStoragePartitions: 1
+  statusStoragePartitions: 1
+
+# Connector registration hook Job. Needs only curl. `retries` attempts spaced
+# 2s apart while waiting for the Connect REST API to answer (~2*retries sec).
+register:
+  image: curlimages/curl:8.11.1
+  retries: 90
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    memory: 1536Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

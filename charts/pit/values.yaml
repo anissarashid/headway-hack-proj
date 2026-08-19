@@ -29,11 +29,15 @@ redpanda:
 source-pg:
   enabled: true
 
+# The Debezium Avro CDC source (M3). Reads the source-pg tables and writes Avro
+# to raw.* topics with schemas in Redpanda's registry. Needs the locally-built
+# pit/connect:dev image loaded into the cluster — `make up` builds and loads it.
+connect:
+  enabled: true
+
 # Subcharts filled in by later milestones. Off until their milestone lands, so a
 # stray template cannot deploy before the milestone that owns it.
 # Each block is still present so environment overrides have a stable path.
-connect:
-  enabled: false
 deid:
   enabled: false
 sink-pg:

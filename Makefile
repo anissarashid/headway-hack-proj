@@ -80,7 +80,7 @@ install: deps namespace ## Install/upgrade the pit umbrella chart and wait for r
 	  --wait --timeout 10m
 
 .PHONY: up
-up: start namespace install ## Bring up the cluster and deploy the stack
+up: start namespace build load install ## Bring up the cluster and deploy the stack (builds+loads local images)
 	@echo "Up. Next: 'make verify-all', or 'make forward' then curl localhost:8081/subjects"
 
 .PHONY: uninstall

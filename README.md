@@ -39,6 +39,7 @@ charts/pit/                    umbrella Helm chart
       files/replication/11-replica-identity.sql  REPLICA IDENTITY FULL, by default
     sink-pg/                   PIT sink Postgres               (M5)
     connect/                   Debezium + Avro Connect         (M3)
+      connectors/source-pg.json  the Debezium connector config (registered by a hook Job)
     deid/                      de-identification transformer   (M4)
     pitctl/                    pit-tail / snapshot / restore   (M5/M7)
 loadgen/                       deterministic synthetic load generator   (M2)
@@ -52,13 +53,15 @@ hack/
   forward.sh                   backgrounded port-forwards behind a PID file
   verify.sh                    M1 broker/registry/console acceptance checks
 images/
-  connect/                     Debezium Connect base           (M3 adds Avro converter)
+  connect/                     Debezium + Confluent Avro converter   (M3)
   deid/                        python + uv base                (M4)
   pitctl/                      python + uv base                (M5/M7)
 scripts/
   verify-conf-docker.sh        cluster-free check of the rendered chart
   verify-schema.sql            schema and replica-identity assertions
   verify-wal.sql               proves the before image reaches the WAL
+spikes/
+  data-703-debezium-avro-registry/   registry-accepts-Debezium-Avro spike + findings (M3)
 ```
 
 ## Prerequisites
@@ -114,8 +117,8 @@ After `make forward` (leave it running in its own terminal):
 | Component        | In-cluster service      | Local port | Reach it                                        | Status        |
 | ---------------- | ----------------------- | ---------- | ----------------------------------------------- | ------------- |
 | Redpanda Console | `pit-console`           | 8080       | `open http://localhost:8080`                    | ✅ M1          |
-| Schema Registry  | `pit-redpanda` (broker) | 8081       | `curl localhost:8081/subjects` → `[]`           | ✅ M1          |
-| Kafka Connect    | `connect`               | 8083       | `curl localhost:8083/connectors` → `[]`         | ⏳ pending M3  |
+| Schema Registry  | `pit-redpanda` (broker) | 8081       | `curl localhost:8081/subjects` → `raw.public.*` | ✅ M1          |
+| Kafka Connect    | `pit-connect`           | 8083       | `curl localhost:8083/connectors` → `["source-pg"]` | ✅ M3       |
 | Source Postgres  | `pit-source-pg`         | 5432       | `psql -h localhost -p 5432 -U pit -d pit`       | ✅ M2          |
 | Sink Postgres    | `sink-pg`               | 5433       | `psql -h localhost -p 5433 -U postgres`         | ⏳ pending M5  |
 | Kafka broker     | `pit-redpanda`          | 9093       | in-cluster only (`pit-redpanda:9093`)           | ✅ M1          |
@@ -239,7 +242,8 @@ by design.
 
 - **M1 — Cluster and chart skeleton:** ✅
 - **M2 — Source Postgres and clinic schema:** ✅
-- M3–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
+- **M3 — Connect image and Debezium Avro source:** ✅
+- M4–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
 
 ## source-pg
 
@@ -509,3 +513,75 @@ ledger exists for: replay it to its newest `tx_at` — newest entry per key, abs
 if it was a delete — and the result has to be the live table, row for row. That
 is the query M6/M8 will run at an arbitrary `T`; `T = now` is the one case with an
 independent answer to compare against.
+
+## connect — Debezium Avro CDC
+
+Kafka Connect running the Debezium Postgres source, writing Avro to `raw.*`
+topics with schemas registered in Redpanda. The Connect worker, its Service on
+`:8083`, and an idempotent registration Job are the `connect` subchart; the image
+is `images/connect/`.
+
+**The image.** Debezium 2.0+ dropped the bundled Confluent Avro converter, and
+Redpanda's registry speaks the Confluent API — so the image is
+`quay.io/debezium/connect:3.0.0.Final` plus `io.confluent:kafka-connect-avro-converter`
+resolved (with its full transitive set) by a Maven build stage into a plugin
+directory. Resolving with Maven rather than a hand-picked jar list is deliberate:
+a missing transitive shows up as a `ClassNotFoundException` at connector start,
+not at build. The converter jar is Confluent Community License — fine local,
+worth a conversation before anywhere shared.
+
+**The connector config** (`charts/pit/charts/connect/connectors/source-pg.json`).
+Four settings are not defaults and each prevents a specific downstream failure:
+
+- `enhanced.avro.schema.support=true` — Debezium's nested records and unions need it.
+- `time.precision.mode=connect` — emit real Avro logical types (`date`,
+  `timestamp-millis`) instead of Debezium semantic types that serialize as bare
+  longs `fastavro` won't decode as datetimes.
+- `decimal.handling.mode=precise` — `bytes` + `logicalType: decimal`, which decodes
+  to `Decimal`; the default `VariableScaleDecimal` compares equal to nothing.
+- `field.name.adjustment.mode=avro` — Avro names must match `[A-Za-z_][A-Za-z0-9_]*`.
+
+**Registration.** A `post-install`/`post-upgrade` hook Job waits for the Connect
+REST API, then `PUT /connectors/{name}/config` for each file in the connectors
+ConfigMap — `PUT` is idempotent, so `helm upgrade` re-applies config instead of
+failing on a name conflict. The connector name is the JSON filename. Connect's
+internal config/offset/status topics are RF 1 here (the defaults of 3 never form
+on a single broker).
+
+**Registry compatibility** was the gating risk. The DATA-703 spike
+(`spikes/data-703-debezium-avro-registry/`) confirmed Redpanda's registry accepts
+Debezium's namespaced envelope schema and that `fastavro` round-trips the logical
+types — so no alternative serialization path is needed for M4–M8. One detail for
+M4: the registry canonicalizes named-type references to their relative form, so
+compare derived schemas by parsed form, not exact JSON string.
+
+### Verifying
+
+```
+make forward                              # in another shell
+curl -s localhost:8083/connector-plugins  # lists io.debezium...PostgresConnector
+curl -s localhost:8083/connectors         # -> ["source-pg"]
+curl -s localhost:8081/subjects           # lists raw.public.<table>-key/-value
+```
+
+## PIT window lower bound
+
+**The PIT window starts at CDC-enable time, not at the beginning of the source
+database's history.** Debezium's initial snapshot stamps every pre-existing row
+with the snapshot's wall clock, not the row's original commit time — so every row
+that existed before CDC was enabled lands at the same instant, and any point in
+time earlier than that is undefined.
+
+Left unguarded this is the worst failure mode available: a query that looks like
+it works and quietly returns wrong answers. So the enable time is recorded where
+the tooling can read it, in a ConfigMap written at first install and preserved
+across upgrades:
+
+```
+kubectl -n pit-poc get cm pit-connect-cdc-window -o jsonpath='{.data.cdcEnabledAt}'
+```
+
+**Requirement for M6:** `pit restore --at T` (and the underlying
+timestamp→offset resolution) must **reject** a `T` earlier than `cdcEnabledAt`
+with a clear error, rather than return a plausible-looking database. This is a
+hard constraint on the replay work, not a nice-to-have.

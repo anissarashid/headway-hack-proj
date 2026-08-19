@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "connect.fullname" . }}-connectors
+  labels:
+    {{- include "connect.labels" . | nindent 4 }}
+data:
+  # One entry per connectors/*.json. The filename (minus .json) is the connector
+  # name the registration Job PUTs to. Each file is a bare connector config map.
+  {{- range $path, $_ := .Files.Glob "connectors/*.json" }}
+  {{ base $path }}: |-
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
