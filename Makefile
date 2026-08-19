@@ -218,6 +218,23 @@ seed-fingerprint: ## Digest whatever is currently in the clinic tables
 seed-test: ## Unit tests for the generator; no database required
 	cd loadgen && $(UV) pytest
 
+# ---- de-identification policy ----------------------------------------------
+# The policy file is the auditable artifact: `policy-check` parses it and prints
+# what it actually says, so reviewing a change is reading rules rather than YAML.
+POLICY ?= deid/policy/clinic.yml
+
+.PHONY: deid-deps
+deid-deps: ## Create the deid venv and install pinned dependencies
+	cd deid && $(UV) sync
+
+.PHONY: policy-check
+policy-check: ## Validate the de-id policy and print its rules
+	@cd deid && $(UV) python -m deid.policy ../$(POLICY)
+
+.PHONY: deid-test
+deid-test: ## Unit tests for the de-id transformer; no cluster required
+	cd deid && $(UV) pytest
+
 # ---- churn -----------------------------------------------------------------
 # The seed gives one state; churn gives a timeline with distinguishable points in
 # it. Bounded three ways (duration, transactions, ledger rows) because cleaned

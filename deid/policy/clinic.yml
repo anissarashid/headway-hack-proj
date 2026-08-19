@@ -1,0 +1,156 @@
+# De-identification policy for the clinic schema.
+#
+# This file is the answer to "what did we do to ssn". It is the artifact, not a
+# configuration convenience: every column of every captured table appears here
+# exactly once, including the ones that survive untouched, because a column
+# nobody wrote down is a column nobody reviewed.
+#
+# Columns are the ones the source actually has -- see
+# charts/pit/charts/source-pg/files/initdb/20-clinic-schema.sql. A rule naming a
+# column that does not exist protects nothing; a column that exists with no rule
+# halts its topic (below).
+#
+# Reviewing a change here means reading the diff and asking two questions:
+# does this leak, and does it still answer the question the replica exists for.
+# `make policy-check` prints the parsed rules so review is not a YAML diff.
+
+# A source column with no rule below stops that one topic at startup rather than
+# flowing through. The alternative is drop_column; there is deliberately no
+# passthrough option. A new column added to the source is therefore a loud,
+# contained failure -- one topic halted, an obvious message -- instead of a
+# silent leak of every row in it.
+on_uncovered_column: halt_topic
+
+tables:
+  # ---------------------------------------------------------------------------
+  # patients -- everything except the identity, mrn and timestamps is PHI or a
+  # quasi-identifier, so nothing here is passthrough by accident.
+  # ---------------------------------------------------------------------------
+  public.patients:
+    # The join key for the whole schema. Hashed under `patient` so it still
+    # joins to appointments, claims and notes, and to nothing outside that
+    # domain.
+    patient_id:     { op: hmac, domain: patient }
+    # Pseudonymous already, but it is a direct identifier that staff can look
+    # up in the source system. Its own domain: nothing should be able to join
+    # an mrn token to a patient token.
+    mrn:            { op: hmac, domain: mrn }
+    first_name:     { op: fake, kind: first_name }
+    middle_name:    { op: fake, kind: middle_name }
+    last_name:      { op: fake, kind: last_name }
+    # Generalized, not masked. NULL here would take every age cohort with it,
+    # which is most of why anyone wants the replica. cap_age is the HIPAA Safe
+    # Harbor limit: ages over 89 collapse into one bucket, because a
+    # 97-year-old in a clinic of this size is identified by their age alone.
+    date_of_birth:  { op: generalize, to: birth_year, cap_age: 89 }
+    # Not hashed. A stable token for an SSN is still an SSN-shaped join key
+    # against any other dataset that hashes SSNs the same way, and nothing
+    # downstream has a use for it.
+    ssn:            { op: drop }
+    email:          { op: fake, kind: email }
+    phone:          { op: fake, kind: phone }
+    address_line1:  { op: drop }
+    address_line2:  { op: drop }
+    # Safe Harbor keeps state and the first three digits of the zip, and drops
+    # everything more precise. City is dropped rather than kept because in a
+    # sparsely-populated zip3 a city name puts the row back on the map.
+    city:           { op: drop }
+    state:          { op: passthrough }
+    postal_code:    { op: generalize, to: zip3 }
+    # Row timestamps are shifted, not passed through: a per-patient shift on
+    # the clinical timestamps below is recoverable if an unshifted created_at
+    # sits in the same row.
+    created_at:     { op: date_shift, anchor: patient_id }
+    updated_at:     { op: date_shift, anchor: patient_id }
+
+  # ---------------------------------------------------------------------------
+  # providers -- not patient data, but a strong re-identification handle in
+  # aggregate, so the policy has to make a call rather than skip the table.
+  # ---------------------------------------------------------------------------
+  public.providers:
+    provider_id:    { op: hmac, domain: provider }
+    # Public information, and still the strongest handle in the table: an NPI
+    # plus a specialty plus a date narrows a patient set hard. Hashed under its
+    # own domain so panels stay comparable without being resolvable.
+    npi:            { op: hmac, domain: npi }
+    full_name:      { op: fake, kind: full_name }
+    # Kept: specialty is the analytic dimension the provider table exists for,
+    # and it is coarse enough not to identify on its own.
+    specialty:      { op: passthrough }
+    email:          { op: fake, kind: email }
+    created_at:     { op: date_shift, anchor: provider_id }
+    updated_at:     { op: date_shift, anchor: provider_id }
+
+  # ---------------------------------------------------------------------------
+  # appointments
+  # ---------------------------------------------------------------------------
+  public.appointments:
+    appointment_id: { op: hmac, domain: appointment }
+    patient_id:     { op: hmac, domain: patient }
+    provider_id:    { op: hmac, domain: provider }
+    # All four timestamps anchor on the same patient, so the offset is one
+    # constant per patient and every interval survives exactly: wait time,
+    # visit length, the gap between two visits. Anchoring on the appointment
+    # instead would give each row its own offset and destroy all of them.
+    scheduled_at:   { op: date_shift, anchor: patient_id }
+    checked_in_at:  { op: date_shift, anchor: patient_id }
+    completed_at:   { op: date_shift, anchor: patient_id }
+    duration_minutes: { op: passthrough }
+    status:         { op: passthrough }
+    # A clinic site name is a location identifier, and the site set is small.
+    location:       { op: drop }
+    # Free text nested inside a jsonb document: a column-level policy cannot
+    # see into it, so it cannot claim to have de-identified it. Dropped until
+    # there is an op that descends into the document.
+    intake_answers: { op: drop }
+    created_at:     { op: date_shift, anchor: patient_id }
+    updated_at:     { op: date_shift, anchor: patient_id }
+
+  # ---------------------------------------------------------------------------
+  # claims
+  # ---------------------------------------------------------------------------
+  public.claims:
+    claim_id:       { op: hmac, domain: claim }
+    patient_id:     { op: hmac, domain: patient }
+    appointment_id: { op: hmac, domain: appointment }
+    # Money is the payload. Amounts are not identifying at this granularity and
+    # rounding them would make the replica useless for the analyses that
+    # justify it.
+    billed_amount:          { op: passthrough }
+    allowed_amount:         { op: passthrough }
+    paid_amount:            { op: passthrough }
+    patient_responsibility: { op: passthrough }
+    # The sensitive part of a claim, and an array, so a scalar op has nothing
+    # to say about it. Generalized to ICD-10 category: a full code can be rare
+    # enough to identify one person in a clinic this size, a category is not.
+    diagnosis_codes: { op: generalize, to: icd10_category }
+    procedure_code:  { op: passthrough }
+    claim_status:    { op: passthrough }
+    submitted_at:    { op: date_shift, anchor: patient_id }
+    adjudicated_at:  { op: date_shift, anchor: patient_id }
+    created_at:      { op: date_shift, anchor: patient_id }
+    updated_at:      { op: date_shift, anchor: patient_id }
+
+  # ---------------------------------------------------------------------------
+  # notes -- the case that decides whether the policy works at all.
+  # ---------------------------------------------------------------------------
+  public.notes:
+    note_id:        { op: hmac, domain: note }
+    patient_id:     { op: hmac, domain: patient }
+    provider_id:    { op: hmac, domain: provider }
+    appointment_id: { op: hmac, domain: appointment }
+    # Same domain as note_id, so an amendment still points at the note it
+    # supersedes.
+    amends_note_id: { op: hmac, domain: note }
+    note_type:      { op: passthrough }
+    # Unstructured PHI -- names, dates, phone numbers, employers and relatives
+    # in prose, mixed with the clinical content. There is no scrubber yet, and
+    # a policy that passed this through would make every other rule in this
+    # file decorative. Dropped, explicitly and visibly, until there is an op
+    # that can be defended.
+    body:           { op: drop }
+    authored_at:    { op: date_shift, anchor: patient_id }
+    signed_at:      { op: date_shift, anchor: patient_id }
+    is_amended:     { op: passthrough }
+    created_at:     { op: date_shift, anchor: patient_id }
+    updated_at:     { op: date_shift, anchor: patient_id }
