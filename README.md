@@ -48,6 +48,9 @@ loadgen/                       deterministic synthetic load generator   (M2)
 deid/                          de-identification transformer            (M4)
   policy/clinic.yml            the policy: the auditable artifact
   src/deid/policy.py           the typed policy model, validated at the edge
+  src/deid/ops.py              what each op does to a value and to its type
+  src/deid/avro.py             the Avro type model both halves agree on
+  src/deid/vocab.py            frozen word lists `fake` draws from
 hack/
   forward.sh                   backgrounded port-forwards behind a PID file
   verify.sh                    M1 broker/registry/console acceptance checks
@@ -178,7 +181,9 @@ in a transformer.
 ```
 make deid-deps     # uv sync
 make policy-check  # validate the policy and print what it actually says
+make ops-demo      # every op, its derived type, and a worked example
 make deid-test     # unit tests; no cluster, no database
+make ops-check     # acceptance check: the two halves agree, across processes
 ```
 
 Every column of every captured table appears exactly once, including the ones
@@ -199,7 +204,7 @@ problem:
 clinic.yml: public.patients.patient_id: op 'hmac' requires argument 'domain'
 ```
 
-Six ops, and the arguments each one cannot work without:
+Nine ops, and the arguments each one cannot work without:
 
 | op | what it does | why it needs what it needs |
 | --- | --- | --- |
@@ -207,8 +212,57 @@ Six ops, and the arguments each one cannot work without:
 | `fake` | plausible synthetic value, requires `kind` | a name column full of nulls breaks every UI downstream and is no safer than a fake name. `kind` is a closed set, so a typo fails at startup rather than mid-topic. |
 | `generalize` | coarsen, requires `to` | the op that decides whether the replica is worth having. `date_of_birth` → `birth_year` with `cap_age: 89` keeps age cohorts and collapses the Safe Harbor tail; masking to NULL is trivially safe and useless. |
 | `date_shift` | move a timestamp, requires `anchor` | one constant offset per anchor entity. A global shift is a caesar cipher on the calendar; a per-record shift destroys every interval, which is usually the reason the data was wanted. |
+| `numeric_jitter` | perturb an amount, requires `pct` and `anchor` | the same argument one dimension over: one factor per entity, so billed ≥ allowed ≥ paid survives. Capped at 25% — a wider spread is not a jitter, and a policy that wants that should say `redact` and be read as saying it. |
+| `redact` | one fixed constant | destroys equality, so nothing joins, groups or counts distinct. For a column that has to stay readable as a column and carry nothing. |
+| `null` | keep the column, always null | the narrow case between `drop` and everything else, when something downstream needs the column to exist. Write it `op: "null"` — unquoted, YAML eats it. |
 | `drop` | remove from the clean schema | not null — remove. A nulled column still says the source had one. |
 | `passthrough` | copy unchanged | written down explicitly so it was reviewed. |
+
+The shipped policy uses six of them; `redact`, `null` and `numeric_jitter` are
+vocabulary the policy can reach for without anyone having to write a transform
+first.
+
+### What an op is
+
+`deid/src/deid/ops.py` pairs the two halves of every op, because every op
+changes a value and its Avro type at once — `date_of_birth` stops being a
+Debezium date and becomes an int holding a birth year, `ssn` stops existing:
+
+```python
+op = build(rule, raw_type, keys=keys)
+clean_type = op.derive_type(raw_type)   # asked once, at startup
+clean_value = op.apply(raw_value)       # asked of every record after that
+```
+
+`derive_type` is where the registry-enforces-the-policy idea actually lands. A
+rule that cannot work against the column it names — `generalize to: zip3` on a
+bigint, `date_shift` on a bare long whose unit nobody wrote down — raises at
+startup and halts that one topic. The raw type is an input to both halves
+because it has to be: Debezium spells a timestamp's unit only in
+`connect.name`, so `Timestamp` and `MicroTimestamp` are both `long` and an op
+that guessed would be wrong by a thousand and still produce valid records.
+
+Four rules hold across every op, and one property test is what keeps them true
+— for every op and every column type, *either* the op refuses the column at
+startup *or* the value it produces fits the type it derived. There is no third
+outcome:
+
+- **Null in, null out.** No op invents a value where the source had none, and
+  only `null` removes one.
+- **An op that can fail to read its input widens its type to nullable.** A zip
+  that is not a zip, an ISO string that will not parse, an amount that is not a
+  number: the op emits null and says so in the type, because passing the value
+  through would leak exactly what the rule exists to remove.
+- **Deterministic, always.** No clock, no `random`, no environment. Replaying a
+  raw topic a year later has to produce byte-identical clean records, or the
+  offset manifest points at something that has moved. The salt arrives by
+  injection, and so does the reference date the HIPAA age cap is measured
+  against — read from the clock, it would give the same record a different
+  answer on a different day.
+- **The envelope is untouchable.** Nothing here reads or writes `source.ts_ms`.
+
+`make ops-demo` prints every op against a real column type with a worked
+example, the same way `make policy-check` prints the rules.
 
 Three checks are load-bearing rather than tidy:
 

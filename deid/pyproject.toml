@@ -6,13 +6,21 @@ requires-python = ">=3.11"
 
 # PyYAML only, for now. The policy parser is the edge of the system and has no
 # business reaching a broker or a database, so it stays dependency-light and its
-# tests run with no cluster.
+# tests run with no cluster. The ops are stdlib on purpose too: hmac and
+# hashlib, and word lists in the repo rather than a faker whose next release
+# would change every surrogate already written to a clean topic.
 dependencies = [
   "PyYAML>=6.0,<7",
 ]
 
+# hypothesis is test-only: the conformance property ("every op, every value,
+# either refused at startup or the halves agree") is the one claim that has to
+# hold for inputs nobody thought to write down.
 [dependency-groups]
-dev = ["pytest>=8.2"]
+dev = [
+    "hypothesis>=6.165.3,<7",
+    "pytest>=8.2",
+]
 
 [build-system]
 requires = ["hatchling"]

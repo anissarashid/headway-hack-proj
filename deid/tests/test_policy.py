@@ -29,8 +29,11 @@ from deid.policy import (
     InvalidArgumentError,
     MalformedPolicyError,
     MissingArgumentError,
+    Null,
+    NumericJitter,
     Passthrough,
     Policy,
+    Redact,
     PolicyError,
     ReservedFieldError,
     UncoveredColumn,
@@ -96,6 +99,105 @@ def test_valid_policy_parses_to_typed_rules():
     )
 
 
+def test_the_ops_that_replace_a_value_rather_than_remove_it():
+    policy = parse_policy(
+        policy_doc(
+            **{
+                "public.appointments": {
+                    "appointment_id": {"op": "hmac", "domain": "appointment"},
+                    "location": {"op": "null"},
+                    "intake_answers": {"op": "redact"},
+                    "duration_minutes": {
+                        "op": "numeric_jitter",
+                        "pct": 5,
+                        "anchor": "appointment_id",
+                    },
+                }
+            }
+        )
+    )
+    assert policy.rule_for("public.appointments", "location").op == Null()
+    assert policy.rule_for("public.appointments", "intake_answers").op == Redact()
+    assert policy.rule_for("public.appointments", "duration_minutes").op == NumericJitter(
+        anchor="appointment_id", pct=5
+    )
+
+
+def test_an_unquoted_null_op_says_what_yaml_did_to_it(tmp_path):
+    """`op: null` is YAML's null, and reads as a rule with no op at all."""
+    path = tmp_path / "unquoted.yml"
+    path.write_text(
+        "tables:\n  public.appointments:\n    location: { op: null }\n", encoding="utf-8"
+    )
+    with pytest.raises(MissingArgumentError) as exc:
+        load_policy(path)
+    assert 'quote it: op: "null"' in str(exc.value)
+
+
+def test_an_absurd_jitter_is_not_a_jitter():
+    with pytest.raises(InvalidArgumentError) as exc:
+        parse_policy(
+            policy_doc(
+                **{
+                    "public.claims": {
+                        "claim_id": {"op": "hmac", "domain": "claim"},
+                        "billed_amount": {
+                            "op": "numeric_jitter",
+                            "pct": 90,
+                            "anchor": "claim_id",
+                        },
+                    }
+                }
+            )
+        )
+    assert "between 1 and 25" in str(exc.value)
+
+
+def test_a_jitter_cannot_be_anchored_on_a_moving_value():
+    """Same rule as date_shift, and the same reason: an anchor is an identity."""
+    with pytest.raises(InvalidArgumentError) as exc:
+        parse_policy(
+            policy_doc(
+                **{
+                    "public.claims": {
+                        "claim_id": {"op": "hmac", "domain": "claim"},
+                        "billed_amount": {
+                            "op": "numeric_jitter",
+                            "pct": 5,
+                            "anchor": "claim_id",
+                        },
+                        "paid_amount": {
+                            "op": "numeric_jitter",
+                            "pct": 5,
+                            "anchor": "billed_amount",
+                        },
+                    }
+                }
+            )
+        )
+    assert "is itself numeric_jitter'd" in str(exc.value)
+
+
+def test_a_date_shift_cannot_be_anchored_on_a_jittered_column():
+    with pytest.raises(InvalidArgumentError) as exc:
+        parse_policy(
+            policy_doc(
+                **{
+                    "public.claims": {
+                        "claim_id": {"op": "hmac", "domain": "claim"},
+                        "billed_amount": {
+                            "op": "numeric_jitter",
+                            "pct": 5,
+                            "anchor": "claim_id",
+                        },
+                        "submitted_at": {"op": "date_shift", "anchor": "billed_amount"},
+                    }
+                }
+            )
+        )
+    assert "is itself numeric_jitter'd" in str(exc.value)
+
+
 def test_uncovered_column_defaults_to_halting_the_topic():
     """Omitting the key must not be a quieter policy than setting it."""
     policy = parse_policy({"tables": {"public.patients": {"ssn": {"op": "drop"}}}})
@@ -145,11 +247,11 @@ def test_hmac_domains_are_reported_for_key_setup():
 def test_unknown_op_is_rejected_by_name():
     with pytest.raises(UnknownOpError) as exc:
         parse_policy(
-            policy_doc(**{"public.patients": {"ssn": {"op": "redact"}}}), source="test.yml"
+            policy_doc(**{"public.patients": {"ssn": {"op": "scrub"}}}), source="test.yml"
         )
     assert exc.value.table == "public.patients"
     assert exc.value.column == "ssn"
-    assert "unknown op 'redact'" in str(exc.value)
+    assert "unknown op 'scrub'" in str(exc.value)
     # The message has to say what the alternatives were.
     assert "drop" in str(exc.value)
     assert str(exc.value).startswith("test.yml: public.patients.ssn: ")
