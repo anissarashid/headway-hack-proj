@@ -44,6 +44,13 @@ charts/pit/                    umbrella Helm chart
 loadgen/                       deterministic synthetic load generator   (M2)
   src/loadgen/config.py        seed constant, counts, distributions
   src/loadgen/seed.py          the generator, loader and CLI
+hack/
+  forward.sh                   backgrounded port-forwards behind a PID file
+  verify.sh                    M1 broker/registry/console acceptance checks
+images/
+  connect/                     Debezium Connect base           (M3 adds Avro converter)
+  deid/                        python + uv base                (M4)
+  pitctl/                      python + uv base                (M5/M7)
 scripts/
   verify-conf-docker.sh        cluster-free check of the rendered chart
   verify-schema.sql            schema + ledger assertions, run by both paths
@@ -62,8 +69,8 @@ scripts/
 
 ```bash
 make up          # start the pit minikube profile + namespace, deploy the stack
-make verify-all  # both acceptance checks against the cluster
-make forward     # port-forward console/registry (+ connect/postgres once they exist)
+make forward     # port-forward console/registry/postgres in the background
+make verify-all  # all acceptance checks against the cluster
 
 # verify the broker and registry answer:
 curl -s localhost:8081/subjects      # -> []   (no schemas registered yet)
@@ -83,6 +90,12 @@ its PVCs but leaves the cluster standing.
 
 `make verify-docker` runs the same schema assertions with no cluster at all.
 
+`make forward` runs in the background behind a PID file — `make forward-stop`
+tears it down. `make verify-m1` is the M1 slice of `verify-all`: broker replicas,
+registry, console, plus two rendered-manifest invariants (no cert-manager
+`Certificate` resources, no NodePort Services) that a values regression would
+otherwise reintroduce silently.
+
 Run `make help` for every target.
 
 ## Access table
@@ -97,10 +110,55 @@ After `make forward` (leave it running in its own terminal):
 | Source Postgres  | `pit-source-pg`         | 5432       | `psql -h localhost -p 5432 -U pit -d pit`       | ✅ M2          |
 | Sink Postgres    | `sink-pg`               | 5433       | `psql -h localhost -p 5433 -U postgres`         | ⏳ pending M5  |
 | Kafka broker     | `pit-redpanda`          | 9093       | in-cluster only (`pit-redpanda:9093`)           | ✅ M1          |
+| Admin API        | `pit-redpanda`          | 9644       | `curl localhost:9644/v1/status/ready`           | ✅ M1          |
 
 The Kafka broker's Kafka API is not port-forwarded — clients run inside the
 cluster and address `pit-redpanda:9093` (and the registry at
-`pit-redpanda:8081`) directly.
+`pit-redpanda:8081`) directly. The `pit-redpanda` name comes from
+`redpanda.fullnameOverride` in `values.yaml`, not from the release name.
+
+`rpk` needs no local install; run it in the broker:
+
+```bash
+kubectl --context pit -n pit-poc exec -it sts/pit-redpanda -c redpanda -- rpk cluster info
+```
+
+## Chart gotchas
+
+Verified against `redpanda` 26.2.2 while building M1. Each of these fails in a
+way that does not look like its cause.
+
+- **`helm template` is not a proof that the chart installs.** Cluster config
+  reaches the broker through the `pit-configuration` post-install *hook*, which
+  renders fine and then fails at apply time if any property is unrecognised. An
+  invalid `config.cluster` key gives `PUT /v1/cluster_config -> Bad Request`, the
+  hook retries, and the release fails. Helm always waits on hooks, so `--wait`
+  changes only how loudly it fails. `make lint` and `make template` cannot catch
+  this class of bug; only `make install` can.
+- **The redpanda subchart ships a `values.schema.json` with
+  `additionalProperties: false` at its root.** A typo under `redpanda:` fails the
+  render outright rather than being ignored — good, but it also means the only
+  supported escape hatch for raw broker flags is
+  `redpanda.statefulset.additionalRedpandaCmdFlags`.
+- **Console config is auto-wired; do not hand-write it.** The chart's
+  `consoleChartIntegration` template force-sets `console.configmap.create` and
+  `console.deployment.create` and merges a derived overlay (brokers, registry
+  URL, TLS) over `console.config`. Setting `console.config.kafka.brokers` by hand
+  fights that merge. `console.enabled: true` is the whole configuration.
+- **The schema registry is built into the broker on 8081** — there is no separate
+  Deployment, so it shares the broker Service (`pit-redpanda`, per
+  `fullnameOverride`).
+- **Pass `-n $(NAMESPACE)` when rendering.** The broker's advertised addresses
+  embed the namespace (`pit-0.pit.pit-poc.svc.cluster.local`), so a
+  namespace-less `helm template` renders misleading FQDNs. `make template` does
+  this for you.
+- **`charts.redpanda.com` publishes a chart literally named `connect` — that is
+  Redpanda Connect (Benthos), *not* the Kafka Connect M3 needs.** M3's Debezium
+  worker is a custom image built from `images/connect/`.
+- **Cleaned topics must be created explicitly in M4** with `retention.ms=-1` and
+  `cleanup.policy=delete`. Auto-created topics inherit broker defaults, and a
+  compacted `clean.*` topic destroys the history point-in-time replay depends on
+  while looking perfectly healthy.
 
 ## Milestone status
 
