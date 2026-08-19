@@ -202,6 +202,33 @@ seed-fingerprint: ## Digest whatever is currently in the clinic tables
 seed-test: ## Unit tests for the generator; no database required
 	cd loadgen && $(UV) pytest
 
+# ---- churn -----------------------------------------------------------------
+# The seed gives one state; churn gives a timeline with distinguishable points in
+# it. Bounded three ways (duration, transactions, ledger rows) because cleaned
+# topics run at infinite retention on a laptop PVC.
+CHURN_DURATION ?= 5m
+CHURN_RATE     ?= 2
+
+.PHONY: churn
+churn: ## Apply continuous inserts/updates/deletes to the seeded schema (needs `make forward`)
+	cd loadgen && $(UV) python -m loadgen --duration $(CHURN_DURATION) --rate $(CHURN_RATE)
+
+.PHONY: churn-verify
+churn-verify: ## Check the ledger: append-only, monotonic tx_at, replays to the live tables
+	@cd loadgen && $(UV) python -m loadgen --verify
+
+.PHONY: churn-check
+churn-check: ## DATA-702 acceptance check: rows move, and the ledger records every mutation
+	@set -euo pipefail; \
+	cd loadgen; \
+	echo "==> churn tests, including the ones that need a database"; \
+	PIT_TEST_DSN="$${PIT_DSN:-host=127.0.0.1 port=$(LOCAL_PORT) user=$(PGUSER) password=pit-dev-password dbname=$(PGDATABASE)}" \
+		$(UV) pytest tests/test_churn.py; \
+	echo "==> a clean seed, then a minute of churn against it"; \
+	$(UV) python -m loadgen.seed --reset --quiet >/dev/null; \
+	$(UV) python -m loadgen --duration 60s --rate 4 --quiet; \
+	echo "PASS: the timeline has distinguishable points and the ledger replays to the live tables"
+
 .PHONY: seed-verify
 seed-verify: ## DATA-701 acceptance check: same seed, same rows, twice over
 	@set -euo pipefail; \

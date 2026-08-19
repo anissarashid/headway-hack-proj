@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 loadgen-seed = "loadgen.seed:main"
+loadgen-churn = "loadgen.__main__:main"
 
 [dependency-groups]
 dev = ["pytest>=8.2"]
