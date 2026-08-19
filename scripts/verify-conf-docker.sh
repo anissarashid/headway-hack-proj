@@ -11,6 +11,7 @@ PGDATABASE=${PGDATABASE:-pit}
 PGPASSWORD_=${PGPASSWORD_:-verify-password}
 REPL_USER=${REPL_USER:-debezium}
 REPL_PASSWORD=${REPL_PASSWORD:-verify-replication-password}
+PUBLICATION=${PUBLICATION:-dbz_publication}
 
 command -v helm >/dev/null || { echo "helm is required (brew install helm)"; exit 1; }
 command -v docker >/dev/null || { echo "docker is required"; exit 1; }
@@ -124,6 +125,24 @@ if [[ $repl != t ]]; then
   exit 1
 fi
 
+# Superuser is not needed for the pre-created publication below. It is granted so
+# a connector pointed at a publication nobody created can still create one, which
+# is what keeps the database free of manual setup.
+super=$(q "select rolsuper from pg_roles where rolname = '$REPL_USER';" | tr -d '\r')
+if [[ $super != t ]]; then
+  echo "FAIL: role '$REPL_USER' lacks SUPERUSER (rolsuper=$super)"
+  exit 1
+fi
+
+# The connector needs no prior setup because the publication is already here, and
+# FOR ALL TABLES means it needs no table list either.
+puball=$(q "select puballtables from pg_publication where pubname = '$PUBLICATION';" | tr -d '\r')
+if [[ $puball != t ]]; then
+  echo "FAIL: publication '$PUBLICATION' missing or not FOR ALL TABLES (puballtables=$puball)"
+  q "select pubname, puballtables from pg_publication;"
+  exit 1
+fi
+
 # Debezium's snapshot phase reads the tables directly, so REPLICATION is not
 # enough on its own. The grant comes from ALTER DEFAULT PRIVILEGES in the role
 # script, which only works because it runs before the schema is created.
@@ -139,13 +158,21 @@ if [[ $ungranted != 0 ]]; then
   exit 1
 fi
 
-echo "PASS: wal_level=logical, logical slot creation works, '$REPL_USER' has REPLICATION and SELECT"
+echo "PASS: wal_level=logical, slot creation works, '$REPL_USER' has REPLICATION/SUPERUSER/SELECT, '$PUBLICATION' is FOR ALL TABLES"
 
 # --- schema ---------------------------------------------------------------
 # The same assertions `make verify-schema` runs in-cluster.
-echo "==> captured tables"
-docker exec "$CONTAINER" psql -U "$PGUSER" -d "$PGDATABASE" -c 'table pit_captured_tables;'
-
 echo "==> running scripts/verify-schema.sql"
 docker exec -i "$CONTAINER" psql -U "$PGUSER" -d "$PGDATABASE" --no-psqlrc -f - \
   < "$(dirname "$0")/verify-schema.sql"
+
+echo "==> replicated tables"
+docker exec "$CONTAINER" psql -U "$PGUSER" -d "$PGDATABASE" -c 'table pit_replicated_tables;'
+
+# --- the wal ---------------------------------------------------------------
+# The same script `make verify` runs in-cluster. Last, because unlike
+# verify-schema.sql it commits: it decodes a real stream, and logical decoding
+# cannot see an uncommitted transaction.
+echo "==> running scripts/verify-wal.sql"
+docker exec -i "$CONTAINER" psql -U "$PGUSER" -d "$PGDATABASE" --no-psqlrc -f - \
+  < "$(dirname "$0")/verify-wal.sql"

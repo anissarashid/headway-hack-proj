@@ -138,21 +138,25 @@ prefix so they pass validation wherever an NPI is validated.
 
 ## One transaction
 
-The whole seed lands in a single transaction, so the mutation ledger records it
-at one `tx_at`. A point-in-time query before that instant sees an empty
-database; one after it sees the whole population. There is no instant at which
-the database is half-populated and a replay could legitimately land on it.
+The whole seed lands in a single transaction, so it reaches Redpanda as one
+commit with one `source.ts_ms`. A point-in-time query before that instant sees an
+empty database; one after it sees the whole population. There is no instant at
+which the database is half-populated and a replay could legitimately land on it.
+
+`test_seed_is_one_transaction` holds that claim down. It reads `xmin` on every
+row and asserts a single distinct value across all five tables -- not one per
+table, which five separate commits would also satisfy.
 
 That also means the seed is insert-only — notes that are amended are inserted
 with `is_amended` already true rather than updated afterwards. Ongoing churn is
 a separate concern and belongs in its own generator.
 
-`--reset` deletes rather than truncates. `TRUNCATE` does not fire row-level
-triggers, so it would empty a captured table without the ledger noticing. It
-also clears the history tables, which are not themselves captured: leaving them
-would mix the previous population's ledger into this one's, and the
-point-in-time answer at any `T` would depend on how many times the seed had been
-run.
+`--reset` deletes rather than truncates. Both reach the WAL, but not in the same
+shape: a `DELETE` decodes as one change event per row, each carrying the before
+image, while a `TRUNCATE` decodes as one truncate event naming the tables. A
+consumer that has not implemented truncate drops it, and then believes rows that
+are gone are still there. Row-at-a-time is slower and is the only shape the
+pipeline handles.
 
 ## The timeline
 

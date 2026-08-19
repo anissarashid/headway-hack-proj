@@ -14,12 +14,18 @@ data:
     psql -v ON_ERROR_STOP=1 --no-psqlrc \
       --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
       CREATE ROLE "${PIT_REPLICATION_USER}"
-        WITH LOGIN REPLICATION PASSWORD '${PIT_REPLICATION_PASSWORD}';
+        WITH LOGIN REPLICATION
+        {{- if .Values.auth.replicationSuperuser }} SUPERUSER{{ end }}
+        PASSWORD '${PIT_REPLICATION_PASSWORD}';
 
       -- Debezium's snapshot phase reads the tables directly, so the role needs
       -- ordinary SELECT on top of REPLICATION. This runs before the 20- schema
       -- scripts, so the ALTER DEFAULT PRIVILEGES is what actually grants the
       -- clinic tables -- the GRANT ON ALL TABLES below finds nothing yet.
+      --
+      -- SUPERUSER makes all four of these redundant. They stay because they are
+      -- the least-privilege baseline: a shared cluster sets
+      -- auth.replicationSuperuser=false and this is what the role is left with.
       GRANT CONNECT ON DATABASE "${POSTGRES_DB}" TO "${PIT_REPLICATION_USER}";
       GRANT USAGE ON SCHEMA public TO "${PIT_REPLICATION_USER}";
       GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${PIT_REPLICATION_USER}";
@@ -28,6 +34,31 @@ data:
     EOSQL
 
     echo "source-pg: replication role '${PIT_REPLICATION_USER}' created"
+  {{- if .Values.replication.fullReplicaIdentity }}
+  # Replication config, kept out of files/initdb/ and off the clinicSchema gate:
+  # a bare Postgres with logical decoding should still replicate in full.
+  {{- range $path, $_ := .Files.Glob "files/replication/*.sql" }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  {{- if .Values.replication.publication.create }}
+  # Inline rather than a file under files/replication/, because the name comes
+  # from a value. Same split as 10- above: a real .sql file when the SQL is
+  # static, an inline block when it needs the environment or a value.
+  12-publication.sql: |
+    -- The publication Debezium decodes through. Created here so the connector
+    -- needs no prior setup and no table list.
+    --
+    -- FOR ALL TABLES resolves its membership at decode time, not at creation
+    -- time, so running this before 20-clinic-schema.sql is fine -- and a table
+    -- created later joins the stream on its own. That pairs with the event
+    -- trigger in 11-replica-identity.sql: one puts a new table in the stream,
+    -- the other gives it a complete before image.
+    --
+    -- FOR ALL TABLES requires superuser, which the POSTGRES_USER role is.
+    CREATE PUBLICATION {{ .Values.replication.publication.name | quote }} FOR ALL TABLES;
+  {{- end }}
   {{- if .Values.clinicSchema.enabled }}
   # Real .sql files under files/initdb/ rather than inline templates: the SQL is
   # long, has no need of the environment, and is easier to review as SQL. They

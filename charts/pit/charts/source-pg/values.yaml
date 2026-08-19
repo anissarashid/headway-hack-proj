@@ -16,9 +16,15 @@ auth:
   username: pit
   # Dev-only defaults. Set auth.existingSecret to supply real credentials.
   password: pit-dev-password
-  # Role Debezium connects as. Needs LOGIN + REPLICATION to open a slot.
+  # Role Debezium connects as. LOGIN + REPLICATION is what opening a slot needs.
   replicationUsername: debezium
   replicationPassword: debezium-dev-password
+  # The chart creates the publication (see replication.publication), so the
+  # connector does not need superuser for normal operation. It is granted
+  # anyway, so that a connector pointed at a publication name nobody created can
+  # still create it -- the database never needs manual attention. Turn this off
+  # on a shared cluster and the role falls back to REPLICATION + SELECT.
+  replicationSuperuser: true
   # Secret with keys `postgres-password` and `replication-password`.
   existingSecret: ""
 
@@ -37,6 +43,24 @@ logicalDecoding:
   # Retain enough WAL that a briefly-disconnected connector can catch up.
   walKeepSize: 512MB
 
+# Full replication by default, rather than a table opting in.
+#
+# Postgres has no GUC for replica identity and no way to say "publish whatever
+# exists". Both halves are manufactured in SQL: files/replication/ installs an
+# event trigger so a new table gets complete before images, and the publication
+# is FOR ALL TABLES so a new table joins the stream. Neither needs a table list.
+replication:
+  # REPLICA IDENTITY FULL on every table, including tables created later. Off
+  # leaves the primary-key default, and an UPDATE then reaches the WAL carrying
+  # only the key columns -- no before image for anything downstream to use.
+  fullReplicaIdentity: true
+  publication:
+    # Created at init so Debezium needs no prior setup. Off means the connector
+    # creates its own, which needs auth.replicationSuperuser.
+    create: true
+    # Debezium's own default, so the connector works without overriding it.
+    name: dbz_publication
+
 # Appended verbatim to postgresql.conf. Anything not CDC-critical goes here.
 extraPostgresqlConf: |
   max_connections = 100
@@ -48,15 +72,16 @@ extraPostgresqlConf: |
   datestyle = 'iso, mdy'
   default_text_search_config = 'pg_catalog.english'
 
-# The clinic schema and its mutation ledger, from files/initdb/*.sql. Off gives
-# you a bare Postgres with logical decoding and nothing to decode; the rest of
-# the pipeline assumes on.
+# The clinic schema, from files/initdb/*.sql. Off gives you a bare Postgres with
+# logical decoding and nothing to decode; the rest of the pipeline assumes on.
+# Replication config is deliberately not behind this gate -- see replication.
 clinicSchema:
   enabled: true
 
 # Extra files dropped into /docker-entrypoint-initdb.d, keyed by filename.
-# Sorted lexically by the entrypoint, so prefix with a number. The chart's own
-# scripts use 10- (roles) and 20- (schema); anything else should use 30- and up.
+# Sorted lexically by the entrypoint, so prefix with a number. The chart owns
+# 10- (role), 11- (replica identity), 12- (publication) and 20- (schema);
+# anything else should use 30- and up.
 extraInitScripts: {}
 
 service:
