@@ -4,7 +4,7 @@ dependencies:
   version: 26.2.2
 - name: source-pg
   repository: file://charts/source-pg
-  version: 0.1.0
+  version: 0.2.0
 - name: connect
   repository: file://charts/connect
   version: 0.1.0
@@ -17,5 +17,5 @@ dependencies:
 - name: pitctl
   repository: file://charts/pitctl
   version: 0.1.0
-digest: sha256:442ba99787efbd84e8cca6878f70aa54f5feb44916e2f42eab58a1467db91e3e
-generated: "2026-08-19T12:58:34.255146-04:00"
+digest: sha256:f0561aeef12c78abb36c0151c769e08bce8ce49f5d0b325ff73ecdf1381b75fc
+generated: "2026-08-19T14:13:35.612446-04:00"

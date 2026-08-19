@@ -131,7 +131,10 @@ CREATE TABLE notes (
   provider_id    bigint      NOT NULL REFERENCES providers(provider_id) ON DELETE RESTRICT,
   -- SET NULL on purpose: deleting an appointment shows up here as an *update*,
   -- not a delete. A pipeline that only watches the deleted table gets this
-  -- wrong, and the history trigger below is what proves it.
+  -- wrong. It shows up in the CDC stream as an update on notes carrying the old
+  -- appointment_id in its before image, which is what REPLICA IDENTITY FULL is
+  -- for -- under the primary-key default the before image is just note_id and
+  -- the cause of the update is unrecoverable.
   appointment_id bigint      REFERENCES appointments(appointment_id) ON DELETE SET NULL,
   -- Self-reference: an amendment points at the note it supersedes.
   amends_note_id bigint      REFERENCES notes(note_id) ON DELETE SET NULL,

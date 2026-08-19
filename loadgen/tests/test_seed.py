@@ -314,11 +314,16 @@ def test_round_trip_through_postgres():
 
 
 @pg
-def test_seed_is_one_transaction_in_the_ledger():
-    """The whole population lands at a single tx_at, all of it inserts.
+def test_seed_is_one_transaction():
+    """The whole population lands in a single transaction.
 
     This is what makes the seed a clean baseline for a point-in-time query:
-    there is no instant at which the database is half-populated.
+    there is no instant at which the database is half-populated. Since the
+    mutation ledger went away, xmin is the evidence -- every row carries the
+    inserting transaction id, so one distinct xmin per table means one commit.
+
+    Reading xmin only works before a freeze rewrites it to FrozenTransactionId,
+    which will not happen to rows this young.
     """
     import psycopg
 
@@ -329,11 +334,20 @@ def test_seed_is_one_transaction_in_the_ledger():
         data = generate(config.DEFAULT)
         load(conn, data)
         with conn.cursor() as cur:
+            seen = set()
             for table in TABLES:
+                # xmin is type xid, which has no ordering operator, so DISTINCT
+                # cannot sort it. Cast to bigint.
                 cur.execute(
-                    f"SELECT count(*), count(DISTINCT tx_at), count(*) FILTER (WHERE op = 'I') "
-                    f"FROM {table}_history")
-                total, instants, inserts = cur.fetchone()
-                assert total == len(getattr(data, table)), f"{table}_history is missing rows"
+                    f"SELECT count(*), count(DISTINCT xmin::text::bigint) FROM {table}")
+                total, instants = cur.fetchone()
+                assert total == len(getattr(data, table)), f"{table} is missing rows"
                 assert instants == 1, f"{table} was written across {instants} transactions"
-                assert inserts == total, f"{table}_history contains something other than inserts"
+
+                cur.execute(f"SELECT DISTINCT xmin::text::bigint FROM {table}")
+                seen.add(cur.fetchone()[0])
+
+            # Not just one transaction per table -- one transaction for all of
+            # them. Five separate commits would each be a point on the timeline
+            # at which the database was half-populated.
+            assert len(seen) == 1, f"the population spans {len(seen)} transactions, not 1"

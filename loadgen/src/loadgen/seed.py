@@ -21,9 +21,9 @@ Safe Harbor age cap, a zip starting with a zero, decimal money, unicode names)
 are planted rather than sampled. ``_assert_edges`` refuses to return a dataset
 that is missing any of them.
 
-The whole seed lands in one transaction, so the mutation ledger records it at a
-single ``tx_at``: a point-in-time query before that instant sees an empty
-database, and one after it sees the whole population. Ongoing churn is a
+The whole seed lands in one transaction, so it is one commit in the CDC stream
+and one point on the timeline: a point-in-time query before that instant sees an
+empty database, and one after it sees the whole population. Ongoing churn is a
 separate concern and belongs in its own generator.
 
     python -m loadgen.seed --reset        # wipe and repopulate
@@ -1010,34 +1010,24 @@ def table_counts(conn) -> dict[str, int]:
 
 
 def reset(conn) -> dict[str, int]:
-    """Empty the captured tables and the ledger, and rewind the identities.
+    """Empty the clinic tables and rewind the identities.
 
-    DELETE, never TRUNCATE. TRUNCATE does not fire row-level triggers, so it
-    would empty a captured table without the ledger noticing -- the README calls
-    this out as the one known gap, and a reset that used it would silently
-    corrupt the oracle for every run afterwards.
+    DELETE, never TRUNCATE. Both reach the WAL, but they reach it differently: a
+    DELETE decodes as one change event per row, each carrying the before image
+    that REPLICA IDENTITY FULL puts there, while a TRUNCATE decodes as a single
+    truncate event naming the tables. A consumer that has not implemented
+    truncate drops it and then believes rows that are gone are still present.
+    Row-at-a-time is slower and is the only shape the whole pipeline handles.
 
-    Deleting the history rows is a separate step because the history tables are
-    not themselves captured. Leaving them would mix the previous population's
-    ledger into this one's, and the point-in-time answer at any T would then
-    depend on how many times the seed had been run.
+    One transaction, so a reset is one point on the timeline in the stream too.
     """
     before = table_counts(conn)
     with conn.transaction(), conn.cursor() as cur:
-        cur.execute("SELECT table_name FROM pit_captured_tables ORDER BY table_name")
-        captured = {r[0] for r in cur.fetchall()}
-        unknown = captured - set(TABLES)
-        if unknown:
-            # Better to stop than to leave rows behind in a table this module
-            # has never heard of.
-            raise SeedError(
-                f"the database captures tables this seeder does not know about: {sorted(unknown)}. "
-                "Add them to TABLES (children first) before resetting."
-            )
+        # Children before parents. The FK actions would mostly do this for us --
+        # patients CASCADE into three tables -- but relying on that makes the
+        # emitted change events depend on cascade order rather than on this list.
         for table in reversed(TABLES):
             cur.execute(f"DELETE FROM {table}")
-        for table in sorted(captured):
-            cur.execute(f"DELETE FROM {table}_history")
         # Identity sequences are rewound so a reseeded database has the same
         # ids as a fresh one. The fingerprint deliberately does not depend on
         # this -- it keys on natural keys -- but identical ids make two runs
@@ -1046,8 +1036,6 @@ def reset(conn) -> dict[str, int]:
                               ("appointments", "appointment_id"), ("claims", "claim_id"),
                               ("notes", "note_id")):
             cur.execute(f"ALTER TABLE {table} ALTER COLUMN {column} RESTART WITH 1")
-        for table in sorted(captured):
-            cur.execute(f"ALTER TABLE {table}_history ALTER COLUMN history_id RESTART WITH 1")
     return before
 
 
@@ -1063,7 +1051,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--dsn", default=None, help="libpq connection string (default: $PIT_DSN or the dev release)")
     p.add_argument("--seed", type=int, default=None, help=f"override the seed (default: {config.SEED})")
-    p.add_argument("--reset", action="store_true", help="delete existing rows and ledger history first")
+    p.add_argument("--reset", action="store_true", help="delete existing rows first")
     p.add_argument("--dry-run", action="store_true", help="generate and fingerprint without touching a database")
     p.add_argument("--fingerprint", action="store_true", help="digest what is already in the database and exit")
     p.add_argument("--quiet", action="store_true", help="suppress the summary; errors still print")
