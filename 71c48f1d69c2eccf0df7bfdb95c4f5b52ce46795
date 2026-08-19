@@ -1,0 +1,33 @@
+deid/uv.lock
+  s_7ef5630f8b781b::t_b2fb8b9c68990d 1-142
+Makefile
+  s_7ef5630f8b781b::t_0f9cde9396363a 205-221
+README.md
+  s_7ef5630f8b781b::t_3a2503cd35cc09 48-50,171-236
+deid/policy/clinic.yml
+  s_7ef5630f8b781b::t_49923d55956fcf 1-156
+deid/pyproject.toml
+  s_7ef5630f8b781b::t_e76141922c7309 1-26
+deid/src/deid/__init__.py
+  s_7ef5630f8b781b::t_41bdfba891d044 1-9
+deid/src/deid/policy.py
+  s_7ef5630f8b781b::t_408c284c5eea21 1-820
+deid/tests/test_policy.py
+  s_7ef5630f8b781b::t_8180d9f74b8e50 1-600
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "71c48f1d69c2eccf0df7bfdb95c4f5b52ce46795",
+  "prompts": {},
+  "sessions": {
+    "s_7ef5630f8b781b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8c0d1f37-d09a-4182-93d5-5510193e7bc1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Anissa Rashid <anissarashid@users.noreply.github.com>"
+    }
+  }
+}
