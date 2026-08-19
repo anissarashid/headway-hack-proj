@@ -1,0 +1,43 @@
+hack/forward.sh
+  s_8d95572f79f724::t_b30b3900f311c6 7-8,17-26,29-34,37-42,59,62-64,68-103,105-114
+hack/verify.sh
+  s_8d95572f79f724::t_b30b3900f311c6 9-13,37-47,54
+hack/verify-m3.sh
+  s_8d95572f79f724::t_28a45279cddef9 23-27,61-69,103-118,142-144
+  s_8d95572f79f724::t_b30b3900f311c6 1-22,28-60,70-102,119-141,145-150
+scripts/verify-connect-docker.sh
+  s_8d95572f79f724::t_b30b3900f311c6 1-28,34-137,147,154-155,159-164
+  s_8d95572f79f724::t_fa67ad4206428f 29-33,138-146,148-153,156-158
+Makefile
+  s_8d95572f79f724::t_02e072a401c5e2 278-285
+  s_8d95572f79f724::t_16edf5580661e8 72-79,154,160-176,232-235,340-347
+  s_8d95572f79f724::t_c6d70d9f8116ee 256-257
+hack/consume_one.py
+  s_8d95572f79f724::t_8283ae1ea03372 195-200
+  s_8d95572f79f724::t_7f3e3d4637c225 201-218
+  s_8d95572f79f724::t_b30b3900f311c6 1-194,219-252
+README.md
+  s_8d95572f79f724::t_58ab4e6c6314b6 127-150,154-157,197-211
+scripts/churn.sql
+  s_8d95572f79f724::t_8283ae1ea03372 16-18,20-22,28-31
+  s_8d95572f79f724::t_02e072a401c5e2 1-15,19,23-27,32-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "031970d1b918437c0dd4ef549cde6870fa014e4b",
+  "prompts": {},
+  "sessions": {
+    "s_8d95572f79f724": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a72b0064-392f-4c3e-a606-15942bc46ceb",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mezie Emelle <mezie.emelle@findheadway.com>",
+      "custom_attributes": {
+        "runtime": "local"
+      }
+    }
+  }
+}

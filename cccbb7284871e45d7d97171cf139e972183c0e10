@@ -1,0 +1,57 @@
+deid/src/deid/ops.py
+  s_10b91ae05ad1a8::t_19af0077eb4137 102,105,112-122
+pit/tests/fixtures/clean/public.claims-value.json
+  s_10b91ae05ad1a8::t_88e85b23e04bfa 22,45,64,83,112,120,128,141,153,166,180,190
+deid/src/deid/schema.py
+  s_10b91ae05ad1a8::t_19af0077eb4137 1-769
+pit/tests/test_ddl.py
+  s_10b91ae05ad1a8::t_4c54bf152a6acf 123,131-133,141-160
+  s_10b91ae05ad1a8::t_f6a0dcb6cf3c9c 161-162
+pit/tests/fixtures/README.md
+  s_10b91ae05ad1a8::t_72d3de0dc739ab 4,18-21,29-32,34-35,37,39-41,43-47,49,51-55,57-59,73,79-82
+scripts/register-clean-schema.py
+  s_10b91ae05ad1a8::t_19af0077eb4137 1-271
+deid/src/deid/avro.py
+  s_10b91ae05ad1a8::t_19af0077eb4137 50-58
+deid/src/deid/__init__.py
+  s_10b91ae05ad1a8::t_19af0077eb4137 6-9,14
+deid/tests/test_schema.py
+  s_10b91ae05ad1a8::t_19af0077eb4137 1-774
+pit/tests/fixtures/clean/public.patients-value.json
+  s_10b91ae05ad1a8::t_88e85b23e04bfa 26,38,46,54,62,70,78,91,105,115
+pit/tests/fixtures/clean/public.notes-value.json
+  s_10b91ae05ad1a8::t_88e85b23e04bfa 26,34,42,50,63,75,83,96,110,120
+Makefile
+  s_10b91ae05ad1a8::t_19af0077eb4137 272-275
+  s_10b91ae05ad1a8::t_82b1d120ca9649 300-311
+hack/gen-clean-fixtures.py
+  s_10b91ae05ad1a8::t_dde3a556ed4dea 4-19,42,47-50,53-55,67-68,72,74,77-78,81-84,86-102,104-111,130-132,134-152,154-158,163-172
+  s_10b91ae05ad1a8::t_1ae380965fb373 173-174
+pit/tests/fixtures/clean/public.providers-value.json
+  s_10b91ae05ad1a8::t_88e85b23e04bfa 26,34,42,55,69,79
+pit/tests/fixtures/clean/public.appointments-value.json
+  s_10b91ae05ad1a8::t_88e85b23e04bfa 26,38,50,62,70,83,96,110,120
+README.md
+  s_10b91ae05ad1a8::t_4d3edbebe807be 459,461-463
+  s_10b91ae05ad1a8::t_19af0077eb4137 53,73
+  s_10b91ae05ad1a8::t_585f82f77e7c1c 473-477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "cccbb7284871e45d7d97171cf139e972183c0e10",
+  "prompts": {},
+  "sessions": {
+    "s_10b91ae05ad1a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0fe1891c-3ece-4da8-b819-025849d8b4ac",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mezie Emelle <mezie.emelle@findheadway.com>",
+      "custom_attributes": {
+        "runtime": "local"
+      }
+    }
+  }
+}
