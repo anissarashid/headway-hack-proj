@@ -1,38 +1,105 @@
-# headway-hack-proj
+# Point-in-Time De-Identified Database Replica (PoC)
 
-A CDC pipeline for exercising point-in-time correctness: a Postgres source with
-logical decoding enabled, a clinic schema carrying deliberately varied PHI/PII
-shapes, a load generator that produces real history to replay, and a mutation
-ledger that acts as the correctness oracle downstream.
+A local, reproducible way to stand up a Postgres database that mirrors a
+primary **as of an arbitrary point in time**, with all PHI/PII removed. The
+source database is synthetic — **no real PHI enters this project at any point.**
 
-## Layout
-
-```
-charts/pit/                       umbrella chart
-charts/pit/charts/source-pg/      Postgres 16 source, wal_level=logical
-  files/initdb/20-clinic-schema.sql     clinic tables, synthetic PHI/PII
-  files/initdb/21-history-triggers.sql  the mutation ledger
-scripts/verify-conf-docker.sh     cluster-free check of the rendered chart
-scripts/verify-schema.sql         schema + ledger assertions, run by both paths
-```
-
-## Requirements
-
-`helm`, `kubectl`, `docker`, and a local cluster (`minikube` by default).
+## Pipeline
 
 ```
-brew install helm kubectl minikube
+source Postgres ──(Debezium CDC)──▶ raw.*  topics ──(de-id transformer)──▶ clean.* topics ──(applier)──▶ sink Postgres
+   (M2)                (M3)          (Redpanda)          (M4)               (Redpanda)        (M5/M6/M7)      (pit_base + PIT dbs)
 ```
 
-## Quickstart
+Two load-bearing ideas:
+
+1. **A point in time is an offset manifest, not a timestamp.** Each cleaned
+   record's Kafka timestamp is set to `source.ts_ms` (the DB commit time), so
+   `offsets_for_times(T)` resolves "the database as of T" to an exact offset per
+   partition. That offset set is the manifest.
+2. **The schema registry enforces the de-id policy.** The clean Avro schema is
+   derived from `(raw schema, policy)`. A source column nobody wrote a policy
+   rule for halts that one topic at startup instead of leaking downstream.
+
+Everything runs on Kubernetes under an umbrella Helm chart, with the official
+Redpanda chart as a dependency, so the same charts move to a shared cluster
+later.
+
+## Repo layout
 
 ```
-make cluster     # start minikube
-make install     # helm upgrade --install, waits for readiness
-make verify-all  # both acceptance checks
+Makefile                       inner-loop targets (make help)
+charts/pit/                    umbrella Helm chart
+  Chart.yaml                   depends on redpanda (charts.redpanda.com) + source-pg
+  values.yaml                  cross-environment invariants
+  values-local.yaml            laptop sizing (1 broker, TLS off, small)
+  charts/
+    source-pg/                 Postgres 16 source, wal_level=logical    (M2)
+      files/initdb/20-clinic-schema.sql     clinic tables, synthetic PHI/PII
+      files/initdb/21-history-triggers.sql  the mutation ledger
+    sink-pg/                   PIT sink Postgres               (M5)
+    connect/                   Debezium + Avro Connect         (M3)
+    deid/                      de-identification transformer   (M4)
+    pitctl/                    pit-tail / snapshot / restore   (M5/M7)
+scripts/
+  verify-conf-docker.sh        cluster-free check of the rendered chart
+  verify-schema.sql            schema + ledger assertions, run by both paths
 ```
 
-`make help` lists everything.
+## Prerequisites
+
+- Docker Desktop with **≥ 8.5 GB** allocated to its VM (Settings → Resources).
+  The `pit` node asks Docker for 8 GB (`--memory=8192`); Docker Desktop needs a
+  little more than that for its own overhead. If Docker gives less, `make up`
+  exits with `Docker Desktop has only NNNN MB memory but you specified 8192MB`.
+  Either raise the Docker Desktop memory or run `make up MEMORY=<fits>`.
+- `minikube`, `kubectl`, `helm` (v3.10+), and `uv` on PATH.
+
+## Quickstart (runbook)
+
+```bash
+make up          # start the pit minikube profile + namespace, deploy the stack
+make verify-all  # both acceptance checks against the cluster
+make forward     # port-forward console/registry (+ connect/postgres once they exist)
+
+# verify the broker and registry answer:
+curl -s localhost:8081/subjects      # -> []   (no schemas registered yet)
+open  http://localhost:8080          # Redpanda Console
+
+make nuke        # tear everything down, including PVCs
+```
+
+`make up` is idempotent — re-run it after editing values. `make nuke` deletes
+the whole minikube profile, so PVCs go too and Postgres init SQL re-runs on the
+next `make up`. `make clean` is the narrower version: it drops the release and
+its PVCs but leaves the cluster standing.
+
+`make verify-docker` runs the same schema assertions with no cluster at all.
+
+Run `make help` for every target.
+
+## Access table
+
+After `make forward` (leave it running in its own terminal):
+
+| Component        | In-cluster service      | Local port | Reach it                                        | Status        |
+| ---------------- | ----------------------- | ---------- | ----------------------------------------------- | ------------- |
+| Redpanda Console | `pit-console`           | 8080       | `open http://localhost:8080`                    | ✅ M1          |
+| Schema Registry  | `pit-redpanda` (broker) | 8081       | `curl localhost:8081/subjects` → `[]`           | ✅ M1          |
+| Kafka Connect    | `connect`               | 8083       | `curl localhost:8083/connectors` → `[]`         | ⏳ pending M3  |
+| Source Postgres  | `pit-source-pg`         | 5432       | `psql -h localhost -p 5432 -U pit -d pit`       | ✅ M2          |
+| Sink Postgres    | `sink-pg`               | 5433       | `psql -h localhost -p 5433 -U postgres`         | ⏳ pending M5  |
+| Kafka broker     | `pit-redpanda`          | 9093       | in-cluster only (`pit-redpanda:9093`)           | ✅ M1          |
+
+The Kafka broker's Kafka API is not port-forwarded — clients run inside the
+cluster and address `pit-redpanda:9093` (and the registry at
+`pit-redpanda:8081`) directly.
+
+## Milestone status
+
+- **M1 — Cluster and chart skeleton:** ✅
+- **M2 — Source Postgres, clinic schema, mutation ledger:** ✅
+- M3–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
 
 ## source-pg
 

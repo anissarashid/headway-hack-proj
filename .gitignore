@@ -1,0 +1,11 @@
+# Helm dependency archives — reproducible from Chart.lock via `helm dependency build`
+charts/**/charts/*.tgz
+
+# Local helm render / debug output
+*.rendered.yaml
+
+# Python / uv
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

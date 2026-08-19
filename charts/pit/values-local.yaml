@@ -1,0 +1,53 @@
+# Laptop overrides. Redpanda's chart defaults (3 brokers, TLS on, external
+# NodePorts, big resources) do not fit a single minikube node. Layer this on
+# top of values.yaml:  helm ... -f values.yaml -f values-local.yaml
+#
+# On a shared cluster you drop this file and the production defaults apply.
+
+redpanda:
+  # Single broker.
+  statefulset:
+    replicas: 1
+
+  # No TLS locally — one less moving part, no cert-manager dependency.
+  tls:
+    enabled: false
+
+  # No external listeners. Everything is reached over `make forward`.
+  external:
+    enabled: false
+
+  # ~1 core, ~2.5Gi so Redpanda + Console + (later) Postgres and the Connect
+  # JVM all coexist on an 8Gi node. overprovisioned=true because the broker
+  # shares a core rather than owning it exclusively.
+  resources:
+    cpu:
+      cores: 1
+      overprovisioned: true
+    memory:
+      container:
+        max: 2.5Gi
+
+  # 20Gi: cleaned topics run at infinite retention (retention.ms=-1), so the
+  # broker PVC is the real ceiling on how much history fits on a laptop.
+  storage:
+    persistentVolume:
+      enabled: true
+      size: 20Gi
+
+  # Single broker => replication factor 1 for internal + user topics.
+  config:
+    cluster:
+      default_topic_replications: 1
+      transaction_coordinator_replication: 1
+      id_allocator_replication: 1
+
+  # Console is light; keep it small next to the broker.
+  console:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
