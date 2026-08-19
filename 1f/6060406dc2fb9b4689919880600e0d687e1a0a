@@ -1,0 +1,42 @@
+README.md
+  s_925a65c6deab5d::t_d22b793b667fa3 1-92
+charts/pit/Chart.yaml
+  s_925a65c6deab5d::t_806a9bbf9bc627 1-14
+charts/pit/charts/connect/Chart.yaml
+  s_925a65c6deab5d::t_a07c9065e59e99 1-5
+.gitignore
+  s_925a65c6deab5d::t_3417a335f3ece5 1-11
+charts/pit/values.yaml
+  s_925a65c6deab5d::t_b23416a2e7df85 1-31
+charts/pit/values-local.yaml
+  s_925a65c6deab5d::t_64e0391d2c7118 1-53
+charts/pit/charts/deid/Chart.yaml
+  s_925a65c6deab5d::t_fe5b4e3761d93d 1-5
+charts/pit/charts/sink-pg/Chart.yaml
+  s_925a65c6deab5d::t_c8c6114ac0c1cc 1-5
+Makefile
+  s_925a65c6deab5d::t_e432648c6bf8ac 1-52,54-142
+  s_925a65c6deab5d::t_e04c34b23e9358 53
+charts/pit/charts/pitctl/Chart.yaml
+  s_925a65c6deab5d::t_4c4a6dfa09ed33 1-5
+charts/pit/charts/source-pg/Chart.yaml
+  s_925a65c6deab5d::t_761ee9d5dc848a 1-5
+charts/pit/Chart.lock
+  s_925a65c6deab5d::t_35c8f83090bf88 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "1f6060406dc2fb9b4689919880600e0d687e1a0a",
+  "prompts": {},
+  "sessions": {
+    "s_925a65c6deab5d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b462c9c-d701-4d69-9e99-a9abb6f45cdc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Darren Liu <dliu9999@gmail.com>"
+    }
+  }
+}
