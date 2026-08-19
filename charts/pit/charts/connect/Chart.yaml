@@ -1,5 +1,10 @@
 apiVersion: v2
 name: connect
-description: Kafka Connect + Debezium source (custom Avro image). Filled in at M3.
+description: >-
+  Kafka Connect worker running the Debezium Postgres source, built with the
+  Confluent Avro converter (images/connect). Writes Avro CDC to raw.* topics
+  with schemas in Redpanda's registry. A post-install hook Job registers the
+  connectors idempotently via PUT /connectors/{name}/config.
 type: application
 version: 0.1.0
+appVersion: "3.0"

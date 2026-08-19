@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Resolves the Confluent Avro converter and its FULL transitive dependency set
+  (schema-registry client, avro, common-config/utils, ...). Debezium 2.0+ no
+  longer bundles this converter, and Redpanda's registry speaks the Confluent
+  API, so io.confluent:kafka-connect-avro-converter is the converter that fits.
+
+  Resolving with Maven rather than curling a hand-picked jar list is deliberate:
+  the transitive set is larger than it looks and a missing jar surfaces as a
+  ClassNotFoundException at connector start, not at build time.
+
+  Version tracks the Kafka in quay.io/debezium/connect:3.0 (Kafka 3.8 -> CP 7.8).
+  Confluent Community License — fine for local/internal, revisit before shared.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.headway.pit</groupId>
+  <artifactId>connect-avro-deps</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <repositories>
+    <repository>
+      <id>confluent</id>
+      <url>https://packages.confluent.io/maven/</url>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.confluent</groupId>
+      <artifactId>kafka-connect-avro-converter</artifactId>
+      <version>7.8.0</version>
+    </dependency>
+  </dependencies>
+</project>

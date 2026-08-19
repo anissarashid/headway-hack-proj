@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "connect.fullname" . }}
+  labels:
+    {{- include "connect.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "connect.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "connect.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      containers:
+        - name: connect
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: rest
+              containerPort: 8083
+          env:
+            # The Debezium image reads these named vars and writes the worker
+            # connect config. RF=1 on every internal topic — the defaults of 3
+            # would never form on a single broker.
+            - name: BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: GROUP_ID
+              value: {{ .Values.worker.groupId | quote }}
+            - name: CONFIG_STORAGE_TOPIC
+              value: {{ .Values.worker.configStorageTopic | quote }}
+            - name: OFFSET_STORAGE_TOPIC
+              value: {{ .Values.worker.offsetStorageTopic | quote }}
+            - name: STATUS_STORAGE_TOPIC
+              value: {{ .Values.worker.statusStorageTopic | quote }}
+            - name: CONFIG_STORAGE_REPLICATION_FACTOR
+              value: {{ .Values.worker.replicationFactor | quote }}
+            - name: OFFSET_STORAGE_REPLICATION_FACTOR
+              value: {{ .Values.worker.replicationFactor | quote }}
+            - name: STATUS_STORAGE_REPLICATION_FACTOR
+              value: {{ .Values.worker.replicationFactor | quote }}
+            - name: OFFSET_STORAGE_PARTITIONS
+              value: {{ .Values.worker.offsetStoragePartitions | quote }}
+            - name: STATUS_STORAGE_PARTITIONS
+              value: {{ .Values.worker.statusStoragePartitions | quote }}
+            # Worker-default converters. Per-connector configs override these
+            # with the Avro converter; the internal storage stays JSON.
+            - name: KEY_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+            - name: VALUE_CONVERTER
+              value: "org.apache.kafka.connect.json.JsonConverter"
+          readinessProbe:
+            httpGet:
+              path: /connectors
+              port: rest
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /
+              port: rest
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

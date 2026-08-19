@@ -1,0 +1,35 @@
+{{- /*
+DATA-707: the PIT window lower bound.
+
+Debezium's initial snapshot stamps every pre-existing row with the snapshot's
+wall clock, not the original commit time. So any point in time earlier than
+"CDC-enable" is undefined, and M6's `pit restore --at T` must REJECT such a T
+rather than return a plausible-but-wrong database.
+
+This records the CDC-enable time (first install of the connect release) where
+tooling can read it:
+    kubectl -n pit-poc get cm pit-connect-cdc-window -o jsonpath='{.data.cdcEnabledAt}'
+
+Preserved across `helm upgrade` via lookup so the lower bound never moves. It
+resets only when the release is uninstalled/nuked, which is exactly when CDC is
+re-enabled from scratch.
+*/ -}}
+{{- $cmName := printf "%s-cdc-window" (include "connect.fullname" .) -}}
+{{- $existing := lookup "v1" "ConfigMap" .Release.Namespace $cmName -}}
+{{- $enabledAt := "" -}}
+{{- if and $existing $existing.data -}}
+{{- $enabledAt = $existing.data.cdcEnabledAt -}}
+{{- end -}}
+{{- if not $enabledAt -}}
+{{- $enabledAt = now | date "2006-01-02T15:04:05Z07:00" -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $cmName }}
+  labels:
+    {{- include "connect.labels" . | nindent 4 }}
+data:
+  # ISO-8601 UTC. M6 replay/restore must reject `--at` earlier than this.
+  cdcEnabledAt: {{ $enabledAt | quote }}
+  note: "PIT window lower bound (DATA-707). Points in time before cdcEnabledAt are undefined because Debezium's initial snapshot stamps pre-existing rows with the snapshot wall clock, not their commit time."

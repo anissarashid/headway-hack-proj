@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "connect.fullname" . }}-register
+  labels:
+    {{- include "connect.labels" . | nindent 4 }}
+  annotations:
+    # Runs after the release is applied, on both install and upgrade. Idempotent
+    # (PUT .../config), so re-running on every upgrade is safe.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    # Delete the prior run before creating a new one (so upgrades don't collide);
+    # also clear it on success. A failed run is kept for debugging.
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "connect.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      volumes:
+        - name: connectors
+          configMap:
+            name: {{ include "connect.fullname" . }}-connectors
+      containers:
+        - name: register
+          image: {{ .Values.register.image | quote }}
+          volumeMounts:
+            - name: connectors
+              mountPath: /connectors
+          env:
+            - name: CONNECT
+              value: "http://{{ include "connect.fullname" . }}:{{ .Values.service.port }}"
+            - name: RETRIES
+              value: {{ .Values.register.retries | quote }}
+          command: ["/bin/sh", "-eu", "-c"]
+          args:
+            - |
+              echo "waiting for Connect REST at $CONNECT ..."
+              i=0
+              until curl -sf "$CONNECT/connectors" >/dev/null 2>&1; do
+                i=$((i+1))
+                if [ "$i" -gt "$RETRIES" ]; then
+                  echo "timed out waiting for Connect after $RETRIES attempts"; exit 1
+                fi
+                sleep 2
+              done
+              echo "Connect is up. Registering connectors..."
+              rc=0
+              for f in /connectors/*.json; do
+                name=$(basename "$f" .json)
+                echo "==> PUT $name"
+                code=$(curl -s -o /tmp/resp -w '%{http_code}' -X PUT \
+                  -H 'Content-Type: application/json' \
+                  --data @"$f" "$CONNECT/connectors/$name/config")
+                echo "   HTTP $code"; cat /tmp/resp 2>/dev/null; echo
+                case "$code" in
+                  2*) ;;
+                  *) echo "!! registration of $name failed"; rc=1 ;;
+                esac
+              done
+              [ "$rc" -eq 0 ] && echo "all connectors registered." || echo "one or more connectors failed."
+              exit "$rc"

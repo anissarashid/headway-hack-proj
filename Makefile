@@ -29,12 +29,12 @@ UV      := uv run
 
 # component -> docker build context. Dockerfiles arrive in later milestones
 # (connect=M3, deid=M4, pitctl=M5); build steps skip cleanly until then.
-CONNECT_CTX := connect
+CONNECT_CTX := images/connect
 DEID_CTX    := deid
 PITCTL_CTX  := pit
 
 # svc:localport:remoteport for `forward`. Services not yet deployed are skipped.
-FORWARDS := pit-console:8080:8080 pit-redpanda:8081:8081 connect:8083:8083 $(STS):$(LOCAL_PORT):5432 sink-pg:5433:5432
+FORWARDS := pit-console:8080:8080 pit-redpanda:8081:8081 pit-connect:8083:8083 $(STS):$(LOCAL_PORT):5432 sink-pg:5433:5432
 
 .DEFAULT_GOAL := help
 
@@ -79,7 +79,7 @@ install: deps namespace ## Install/upgrade the pit umbrella chart and wait for r
 	  --wait --timeout 10m
 
 .PHONY: up
-up: start namespace install ## Bring up the cluster and deploy the stack
+up: start namespace build load install ## Bring up the cluster and deploy the stack (builds+loads local images)
 	@echo "Up. Next: 'make verify-all', or 'make forward' then curl localhost:8081/subjects"
 
 .PHONY: uninstall
