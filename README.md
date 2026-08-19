@@ -37,7 +37,7 @@ charts/pit/                    umbrella Helm chart
     source-pg/                 Postgres 16 source, wal_level=logical    (M2)
       files/initdb/20-clinic-schema.sql     clinic tables, synthetic PHI/PII
       files/replication/11-replica-identity.sql  REPLICA IDENTITY FULL, by default
-    sink-pg/                   PIT sink Postgres               (M5)
+    sink-pg/                   PIT sink Postgres, plain         (M5)
     connect/                   Debezium + Avro Connect         (M3)
       connectors/source-pg.json  the Debezium connector config (registered by a hook Job)
     deid/                      de-identification transformer   (M4)
@@ -123,7 +123,7 @@ After `make forward` (leave it running in its own terminal):
 | Schema Registry  | `pit-redpanda` (broker) | 8081       | `curl localhost:8081/subjects` → `raw.public.*` | ✅ M1          |
 | Kafka Connect    | `pit-connect`           | 8083       | `curl localhost:8083/connectors` → `["source-pg"]` | ✅ M3       |
 | Source Postgres  | `pit-source-pg`         | 5432       | `psql -h localhost -p 5432 -U pit -d pit`       | ✅ M2          |
-| Sink Postgres    | `sink-pg`               | 5433       | `psql -h localhost -p 5433 -U postgres`         | ⏳ pending M5  |
+| Sink Postgres    | `pit-sink-pg`           | 5433       | `psql -h localhost -p 5433 -U pit -d pit_sink`  | ✅ deployed    |
 | Kafka broker     | `pit-redpanda`          | 9093       | in-cluster only (`pit-redpanda:9093`)           | ✅ M1          |
 | Admin API        | `pit-redpanda`          | 9644       | `curl localhost:9644/v1/status/ready`           | ✅ M1          |
 
@@ -378,6 +378,49 @@ Use a `30-` or higher prefix; the chart owns `10-` (role), `11-` (replica
 identity), `12-` (publication) and `20-` (schema).
 Note that initdb scripts run only on first boot of an empty volume — `make clean`
 drops the PVC when you need a rebuild.
+
+## sink-pg
+
+The replay target: plain Postgres 16, one StatefulSet, one PVC, two Services.
+Where source-pg exists to make CDC possible, this one exists to receive it, so it
+carries none of that machinery — no `wal_level=logical`, no replication role, no
+publication, no init SQL, and no `postgresql.conf` ConfigMap. Nothing decodes this
+database's WAL.
+
+`pit` is a superuser, and the image makes it one. `POSTGRES_USER` is created with
+`SUPERUSER`, `CREATEDB` and `CREATEROLE`, and `POSTGRES_DB` is created alongside
+it, so the chart promises what the entrypoint already does rather than adding a
+script that repeats it. There is no init SQL to go wrong, and one credential in
+the Secret instead of two.
+
+Two databases exist on a fresh install: `pit_sink` and `postgres`. The default is
+`pit_sink` and not `pit_base` on purpose — M5 creates `pit_base` and one database
+per restored point in time, and a connection default that is also a payload
+database is one the applier can neither drop nor recreate. Run `CREATE DATABASE`
+from `postgres`; you cannot create or drop the database you are connected to.
+
+The subchart is on before the applier that fills it. An empty database is
+harmless, and having it up early makes the M5 work easier to iterate on.
+
+### Extending
+
+`extraInitScripts` takes a filename-to-content map, same as source-pg, with a
+`30-` or higher prefix. The ConfigMap is not rendered at all while the map is
+empty, and the scripts run only on the first boot of an empty volume — `make
+clean` drops the PVC. If the sink ever needs a non-default setting, copy
+source-pg's `configmap-postgresql-conf.yaml` and the `-c config_file=` arg; it was
+left out because nothing needs it yet.
+
+### Verifying
+
+```
+make verify-sink
+```
+
+Waits for rollout, lists the databases, asserts `pit` is a superuser, and creates
+and drops a database — which is the thing M5 actually needs of it. It prints
+`wal_level` too, expecting `replica`: the sink decoding nothing is a property
+worth seeing rather than assuming.
 
 ## Clinic schema
 

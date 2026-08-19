@@ -35,12 +35,17 @@ source-pg:
 connect:
   enabled: true
 
+# The replay target (M5). Plain Postgres holding pit_base, snapshots and the
+# restored point-in-time databases. On before the applier that fills it, because
+# a database with nothing in it is harmless and having it up early makes the
+# applier work easier to iterate on.
+sink-pg:
+  enabled: true
+
 # Subcharts filled in by later milestones. Off until their milestone lands, so a
 # stray template cannot deploy before the milestone that owns it.
 # Each block is still present so environment overrides have a stable path.
 deid:
-  enabled: false
-sink-pg:
   enabled: false
 pitctl:
   enabled: false

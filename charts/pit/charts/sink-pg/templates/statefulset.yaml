@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "sink-pg.fullname" . }}
+  labels:
+    {{- include "sink-pg.labels" . | nindent 4 }}
+spec:
+  # One replica. The applier writes here, and a second replica would be a second
+  # copy of a replay that is already defined by an offset manifest.
+  replicas: 1
+  serviceName: {{ include "sink-pg.fullname" . }}-headless
+  selector:
+    matchLabels:
+      {{- include "sink-pg.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sink-pg.selectorLabels" . | nindent 8 }}
+      {{- if .Values.extraInitScripts }}
+      annotations:
+        # Only meaningful on a fresh volume, but a changed script with an
+        # unchanged pod is the more confusing of the two failures.
+        checksum/initdb: {{ include (print $.Template.BasePath "/configmap-initdb.yaml") . | sha256sum }}
+      {{- end }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          # No args. source-pg passes `-c config_file=` because wal_level=logical
+          # cannot be set at runtime; the sink needs no non-default setting, so it
+          # keeps the postgresql.conf initdb writes and stays that much simpler.
+          ports:
+            - name: postgresql
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: PGDATA
+              value: {{ .Values.pgData | quote }}
+            # The entrypoint creates this database, and creates POSTGRES_USER as
+            # a superuser. That is the whole of what this chart promises, so
+            # there is no init SQL to go wrong.
+            - name: POSTGRES_DB
+              value: {{ .Values.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sink-pg.secretName" . }}
+                  key: postgres-password
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.dataDir }}
+            {{- if .Values.extraInitScripts }}
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            {{- end }}
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            # Generous: a restart part way through initdb leaves a half-built
+            # cluster, and restoring a point-in-time database is not quick.
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        {{- if .Values.extraInitScripts }}
+        - name: initdb
+          configMap:
+            name: {{ include "sink-pg.fullname" . }}-initdb
+            # The entrypoint sources non-executable .sh files, but mark them
+            # executable anyway so it execs them directly.
+            defaultMode: 0555
+        {{- end }}
+        {{- if not .Values.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "sink-pg.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+  {{- end }}

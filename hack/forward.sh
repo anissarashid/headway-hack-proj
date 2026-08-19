@@ -21,7 +21,7 @@ FORWARDS=(
   "svc/${RELEASE}-redpanda|9644:9644|Admin API"
   "svc/${RELEASE}-connect|8083:8083|Kafka Connect (M3)"
   "svc/${RELEASE}-source-pg|5432:5432|source Postgres"
-  "svc/${RELEASE}-sink-pg|5433:5432|sink Postgres (M5)"
+  "svc/${RELEASE}-sink-pg|5433:5432|sink Postgres"
 )
 
 stop() {

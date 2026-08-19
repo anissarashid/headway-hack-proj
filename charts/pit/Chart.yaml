@@ -30,7 +30,7 @@ dependencies:
     repository: "file://charts/deid"
     condition: deid.enabled
   - name: sink-pg
-    version: 0.1.0
+    version: 0.2.0
     repository: "file://charts/sink-pg"
     condition: sink-pg.enabled
   - name: pitctl

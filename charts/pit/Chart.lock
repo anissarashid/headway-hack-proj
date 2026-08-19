@@ -13,9 +13,9 @@ dependencies:
   version: 0.1.0
 - name: sink-pg
   repository: file://charts/sink-pg
-  version: 0.1.0
+  version: 0.2.0
 - name: pitctl
   repository: file://charts/pitctl
   version: 0.1.0
-digest: sha256:f0561aeef12c78abb36c0151c769e08bce8ce49f5d0b325ff73ecdf1381b75fc
-generated: "2026-08-19T14:13:35.612446-04:00"
+digest: sha256:21e98fa08fece782541daa0d470bb3358bee18fa976ad01636f6b1913eca4741
+generated: "2026-08-19T15:16:08.265825-04:00"
