@@ -29,12 +29,9 @@ UV      := uv run
 
 # component -> docker build context. Dockerfiles arrive in later milestones
 # (connect=M3, deid=M4, pitctl=M5); build steps skip cleanly until then.
-CONNECT_CTX := connect
-DEID_CTX    := deid
-PITCTL_CTX  := pit
-
-# svc:localport:remoteport for `forward`. Services not yet deployed are skipped.
-FORWARDS := pit-console:8080:8080 pit-redpanda:8081:8081 connect:8083:8083 $(STS):$(LOCAL_PORT):5432 sink-pg:5433:5432
+CONNECT_CTX := images/connect
+DEID_CTX    := images/deid
+PITCTL_CTX  := images/pitctl
 
 .DEFAULT_GOAL := help
 
@@ -130,7 +127,11 @@ verify-schema: ## DATA-700 acceptance check: tables, REPLICA IDENTITY FULL, hist
 		psql -U $(PGUSER) -d $(PGDATABASE) --no-psqlrc -f - < scripts/verify-schema.sql
 
 .PHONY: verify-all
-verify-all: verify verify-schema ## Both acceptance checks against the cluster
+verify-all: verify-m1 verify verify-schema ## All acceptance checks against the cluster
+
+.PHONY: verify-m1
+verify-m1: ## DATA-698 acceptance check: broker, registry and console reachable
+	@hack/verify.sh
 
 .PHONY: verify-docker
 verify-docker: ## Same checks without a cluster: run the rendered chart under plain docker
@@ -165,7 +166,7 @@ load: ## Load built images into the minikube profile
 
 .PHONY: reload
 reload: build load install ## Rebuild images, load them, and roll the affected deployments
-	@for d in connect deid pit-tail; do \
+	@for d in $(RELEASE)-connect $(RELEASE)-deid pit-tail; do \
 	  if $(KUBECTL) get deploy $$d >/dev/null 2>&1; then \
 	    $(KUBECTL) rollout restart deploy/$$d; \
 	  fi; \
@@ -173,22 +174,12 @@ reload: build load install ## Rebuild images, load them, and roll the affected d
 
 # ---- access ----------------------------------------------------------------
 .PHONY: forward
-forward: ## Port-forward console/registry/connect/postgres (skips undeployed services)
-	@echo "Forwarding (Ctrl-C to stop):"; \
-	pids=""; \
-	for f in $(FORWARDS); do \
-	  svc=$${f%%:*}; rest=$${f#*:}; lp=$${rest%%:*}; rp=$${rest##*:}; \
-	  if $(KUBECTL) get svc $$svc >/dev/null 2>&1; then \
-	    echo "  $$svc  localhost:$$lp -> $$rp"; \
-	    $(KUBECTL) port-forward svc/$$svc $$lp:$$rp >/dev/null 2>&1 & \
-	    pids="$$pids $$!"; \
-	  else \
-	    echo "  $$svc  (not deployed yet — pending)"; \
-	  fi; \
-	done; \
-	trap "kill $$pids 2>/dev/null" INT TERM EXIT; \
-	echo "  ready — Ctrl-C to stop"; \
-	wait
+forward: ## Port-forward console/registry/connect/postgres in the background
+	@hack/forward.sh start
+
+.PHONY: forward-stop
+forward-stop: ## Stop the background port-forwards
+	@hack/forward.sh stop
 
 .PHONY: psql
 psql: ## Open a psql shell in the source Postgres pod
