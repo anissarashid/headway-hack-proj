@@ -24,6 +24,11 @@ PGDATABASE ?= pit
 # through. Both are created by the chart's initdb scripts; see source-pg values.
 REPLUSER    ?= debezium
 PUBLICATION ?= dbz_publication
+# The sink: plain Postgres, its own StatefulSet and credentials. No replication
+# role and no publication -- nothing decodes this database's WAL.
+SINK_STS        ?= $(RELEASE)-sink-pg
+SINK_PGUSER     ?= pit
+SINK_PGDATABASE ?= pit_sink
 # Local port `forward` maps source-pg onto; the loadgen DSN defaults here too.
 LOCAL_PORT ?= 5432
 
@@ -142,8 +147,33 @@ verify-schema: ## DATA-700 acceptance check: tables, foreign keys, full replica 
 	$(KUBECTL) exec sts/$(STS) -- \
 		psql -U $(PGUSER) -d $(PGDATABASE) -c 'table pit_replicated_tables;'
 
+.PHONY: verify-sink
+verify-sink: ## Sink acceptance check: pod ready, database present, user is a superuser
+	@set -euo pipefail; \
+	echo "==> waiting for $(SINK_STS) to be ready"; \
+	$(KUBECTL) rollout status sts/$(SINK_STS) --timeout=5m; \
+	echo "==> databases"; \
+	$(KUBECTL) exec sts/$(SINK_STS) -- \
+		psql -U $(SINK_PGUSER) -d $(SINK_PGDATABASE) -c \
+		'select datname, pg_encoding_to_char(encoding) as encoding from pg_database where not datistemplate order by datname;'; \
+	super=$$($(KUBECTL) exec sts/$(SINK_STS) -- \
+		psql -U $(SINK_PGUSER) -d $(SINK_PGDATABASE) -Atc \
+		"select rolsuper from pg_roles where rolname = '$(SINK_PGUSER)';" | tr -d '\r'); \
+	if [[ "$$super" != "t" ]]; then \
+		echo "FAIL: '$(SINK_PGUSER)' is not a superuser (rolsuper=$$super)"; exit 1; \
+	fi; \
+	echo "==> it can create and drop a database, which is what M5 needs of it"; \
+	$(KUBECTL) exec sts/$(SINK_STS) -- \
+		psql -U $(SINK_PGUSER) -d postgres -q -c 'DROP DATABASE IF EXISTS pit_verify_sink;' \
+		-c 'CREATE DATABASE pit_verify_sink;' -c 'DROP DATABASE pit_verify_sink;'; \
+	echo "==> no CDC machinery here, deliberately"; \
+	level=$$($(KUBECTL) exec sts/$(SINK_STS) -- \
+		psql -U $(SINK_PGUSER) -d $(SINK_PGDATABASE) -Atc 'show wal_level;' | tr -d '\r'); \
+	echo "    wal_level=$$level (replica is expected; the sink decodes nothing)"; \
+	echo "PASS: sink is up, '$(SINK_PGDATABASE)' exists, '$(SINK_PGUSER)' is a superuser and can create databases"
+
 .PHONY: verify-all
-verify-all: verify-m1 verify verify-schema ## All acceptance checks against the cluster
+verify-all: verify-m1 verify verify-schema verify-sink ## All acceptance checks against the cluster
 
 .PHONY: verify-m1
 verify-m1: ## DATA-698 acceptance check: broker, registry and console reachable
@@ -200,6 +230,10 @@ forward-stop: ## Stop the background port-forwards
 .PHONY: psql
 psql: ## Open a psql shell in the source Postgres pod
 	$(KUBECTL) exec -it sts/$(STS) -- psql -U $(PGUSER) -d $(PGDATABASE)
+
+.PHONY: psql-sink
+psql-sink: ## Open a psql shell in the sink Postgres pod
+	$(KUBECTL) exec -it sts/$(SINK_STS) -- psql -U $(SINK_PGUSER) -d $(SINK_PGDATABASE)
 
 # ---- load generation -------------------------------------------------------
 .PHONY: loadgen-deps
@@ -312,9 +346,11 @@ seed-verify: ## DATA-701 acceptance check: same seed, same rows, twice over
 	echo "PASS: the seed is reproducible and the row counts match the config"
 
 # ---- logs ------------------------------------------------------------------
-.PHONY: logs-source-pg logs-deid logs-connect logs-tail
+.PHONY: logs-source-pg logs-sink-pg logs-deid logs-connect logs-tail
 logs-source-pg: ## Tail the source Postgres logs
 	$(KUBECTL) logs sts/$(STS) -f --tail=100
+logs-sink-pg: ## Tail the sink Postgres logs
+	$(KUBECTL) logs sts/$(SINK_STS) -f --tail=100
 logs-deid: ## Tail the de-id transformer logs
 	$(KUBECTL) logs -l app.kubernetes.io/name=deid -f --tail=100
 logs-connect: ## Tail the Kafka Connect logs

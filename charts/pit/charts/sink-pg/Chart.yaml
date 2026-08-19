@@ -1,5 +1,10 @@
 apiVersion: v2
 name: sink-pg
-description: Postgres sink holding pit_base, snapshots and restored PIT databases. Filled in at M5.
+description: >-
+  Postgres sink for the replayed, de-identified data. Holds pit_base, snapshots
+  and the restored point-in-time databases. Plain Postgres on purpose: it is a
+  replay target, so it needs no logical decoding, no replication role and none
+  of the CDC machinery source-pg carries.
 type: application
-version: 0.1.0
+version: 0.2.0
+appVersion: "16.10"

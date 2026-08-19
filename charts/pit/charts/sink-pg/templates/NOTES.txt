@@ -1,0 +1,25 @@
+sink-pg is installed as {{ include "sink-pg.fullname" . }}.
+
+Plain Postgres: no logical decoding, no replication role, no init SQL. It is a
+replay target, so it carries none of the CDC machinery source-pg does.
+
+'{{ .Values.auth.username }}' is a superuser, created by the image rather than by
+a script. Confirm it:
+
+  kubectl exec -n {{ .Release.Namespace }} sts/{{ include "sink-pg.fullname" . }} -- \
+    psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -Atc \
+    "select rolsuper from pg_roles where rolname = current_user;"
+
+Expected: t
+
+Connect from your machine:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "sink-pg.fullname" . }} 5433:{{ .Values.service.port }}
+  psql "postgresql://{{ .Values.auth.username }}@127.0.0.1:5433/{{ .Values.auth.database }}"
+
+The password is in secret/{{ include "sink-pg.secretName" . }} under key
+postgres-password.
+
+Two databases exist: '{{ .Values.auth.database }}' and 'postgres'. M5 creates
+pit_base and one database per restored point in time. Run CREATE DATABASE from
+'postgres' -- you cannot create or drop the database you are connected to.

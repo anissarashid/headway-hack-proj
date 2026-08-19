@@ -37,9 +37,11 @@ echo "== in-cluster rpk (no local install needed) =="
 check "cluster healthy" "true" "$("${KC[@]}" exec -q sts/"$RELEASE-redpanda" -c redpanda -- \
   rpk cluster health 2>/dev/null | grep -oE 'Healthy:\s+\w+' | grep -oE '(true|false)' || echo MISSING)"
 
+check "sink replicas"             "1/1"      "$("${KC[@]}" get sts "$RELEASE-sink-pg" -o jsonpath='{.status.readyReplicas}/{.spec.replicas}' 2>/dev/null || echo MISSING)"
+
 echo "== pending later milestones =="
 printf '  SKIP  %-38s %s\n' "Kafka Connect /connectors" "lands in M3 (DATA-704/705/706)"
-printf '  SKIP  %-38s %s\n' "sink Postgres"             "lands in M5 (DATA-713)"
+printf '  NOTE  %-38s %s\n' "sink Postgres" "up and empty; the applier that fills it lands in M5"
 printf '  NOTE  %-38s %s\n' "source Postgres / clinic schema" "covered by 'make verify' and 'make verify-schema'"
 
 echo

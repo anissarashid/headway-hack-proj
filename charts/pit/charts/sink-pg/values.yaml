@@ -1,0 +1,63 @@
+# Same image and major version as source-pg. A replay that lands in a different
+# Postgres than it came from is a variable nobody wants while M6 is being built.
+image:
+  repository: postgres
+  tag: "16.10"
+  pullPolicy: IfNotPresent
+
+# The official image runs as uid/gid 999. fsGroup makes the PVC writable by it.
+podSecurityContext:
+  fsGroup: 999
+containerSecurityContext:
+  runAsUser: 999
+  runAsGroup: 999
+  allowPrivilegeEscalation: false
+
+auth:
+  # The database you land in. Not pit_base: M5 creates that, along with one
+  # database per restored point in time, and a connection default that is also a
+  # payload database is one the applier cannot drop or recreate.
+  database: pit_sink
+  username: pit
+  # Dev-only default. Set auth.existingSecret to supply a real credential.
+  password: pit-dev-password
+  # Secret with key `postgres-password`.
+  existingSecret: ""
+
+# PGDATA is a subdirectory of the mount, not the mount root — the official image
+# recommends this so initdb never has to contend with a non-empty volume root.
+dataDir: /var/lib/postgresql/data
+pgData: /var/lib/postgresql/data/pgdata
+
+# Extra files dropped into /docker-entrypoint-initdb.d, keyed by filename.
+# Sorted lexically by the entrypoint, so prefix with a number. Empty by default,
+# and the ConfigMap is not rendered at all when empty: the image already gives us
+# everything this chart promises. See the README section on the superuser.
+#
+# They run only on the first boot of an empty volume. `make clean` drops the PVC.
+extraInitScripts: {}
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  enabled: true
+  # Smaller than source-pg's 8Gi even though this holds more databases: the sink
+  # carries de-identified data with the free text reduced, and on a laptop it
+  # shares a node with Redpanda's 20Gi and the Connect JVM.
+  size: 4Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
