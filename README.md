@@ -50,6 +50,7 @@ deid/                          de-identification transformer            (M4)
   policy/clinic.yml            the policy: the auditable artifact
   src/deid/policy.py           the typed policy model, validated at the edge
   src/deid/ops.py              what each op does to a value and to its type
+  src/deid/schema.py           the clean Avro schema, derived from (raw schema, policy)
   src/deid/avro.py             the Avro type model both halves agree on
   src/deid/vocab.py            frozen word lists `fake` draws from
 hack/
@@ -60,6 +61,7 @@ images/
   deid/                        python + uv base                (M4)
   pitctl/                      python + uv base                (M5/M7)
 scripts/
+  register-clean-schema.py     derives the clean schemas and registers them  (M4)
   verify-conf-docker.sh        cluster-free check of the rendered chart
   verify-schema.sql            schema and replica-identity assertions
   verify-wal.sql               proves the before image reaches the WAL

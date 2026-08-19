@@ -269,6 +269,10 @@ policy-check: ## Validate the de-id policy and print its rules
 ops-demo: ## Show what each op does to a value and to its Avro type
 	@cd deid && $(UV) python -m deid.ops
 
+.PHONY: schema-derive
+schema-derive: ## Derive and print the clean Avro schema for public.patients
+	@cd deid && $(UV) python -m deid.schema ../$(POLICY) --namespace clean.public.patients
+
 .PHONY: deid-test
 deid-test: ## Unit tests for the de-id transformer; no cluster required
 	cd deid && $(UV) pytest
@@ -292,6 +296,18 @@ print(ops.build(r, "string", keys=k).apply("  MRN-000482 "))'; \
 		echo "FAIL: the same input under the same salt gave two surrogates"; exit 1; \
 	fi; \
 	echo "PASS: every op's two halves agree, and hmac is stable across processes"
+
+# Where the registry answers. `make forward` maps it onto localhost:8081.
+REGISTRY_URL ?= http://localhost:8081
+
+.PHONY: schema-check
+schema-check: ## DATA-711 acceptance check: derived clean schemas register (needs `make forward`)
+	@set -euo pipefail; \
+	echo "==> schema derivation tests (no registry)"; \
+	cd deid && $(UV) pytest tests/test_schema.py; cd ..; \
+	echo "==> registering the derived schemas against the live registry"; \
+	uv run --with fastavro --with requests --with PyYAML \
+	  python scripts/register-clean-schema.py --registry $(REGISTRY_URL) --policy $(POLICY)
 
 # ---- churn -----------------------------------------------------------------
 # The seed gives one state; churn gives a timeline with distinguishable points in
