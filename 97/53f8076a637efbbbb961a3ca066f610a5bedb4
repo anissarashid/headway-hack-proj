@@ -1,0 +1,47 @@
+scripts/verify-conf-docker.sh
+  s_70c4860a9fdcb0::t_93328c6fc52e11 1-117
+Makefile
+  s_70c4860a9fdcb0::t_376c9acd3e4c8a 1-91
+README.md
+  s_70c4860a9fdcb0::t_f6333e20e8af2c 2-85
+charts/pit/Chart.yaml
+  s_70c4860a9fdcb0::t_47bf04583cff34 1-12
+charts/pit/charts/source-pg/Chart.yaml
+  s_70c4860a9fdcb0::t_2450d541f17d6d 1-10
+charts/pit/charts/source-pg/templates/NOTES.txt
+  s_70c4860a9fdcb0::t_ea180a252b463f 1-16
+charts/pit/charts/source-pg/templates/_helpers.tpl
+  s_70c4860a9fdcb0::t_93f6fbf33e0cc5 1-36
+charts/pit/charts/source-pg/templates/configmap-initdb.yaml
+  s_70c4860a9fdcb0::t_4d095eecf0f661 1-33
+charts/pit/charts/source-pg/templates/configmap-postgresql-conf.yaml
+  s_70c4860a9fdcb0::t_2db9f7fdcb3d6f 1-34
+charts/pit/charts/source-pg/templates/secret.yaml
+  s_70c4860a9fdcb0::t_3512748c7939e1 1-12
+charts/pit/charts/source-pg/templates/service.yaml
+  s_70c4860a9fdcb0::t_2faf26c047a8ed 1-31
+charts/pit/charts/source-pg/templates/statefulset.yaml
+  s_70c4860a9fdcb0::t_3b02b9d02f0ccc 1-133
+charts/pit/charts/source-pg/values.yaml
+  s_70c4860a9fdcb0::t_1fd41cf0a12759 1-76
+charts/pit/templates/NOTES.txt
+  s_70c4860a9fdcb0::t_7fd7c91bf78409 1-6
+charts/pit/values.yaml
+  s_70c4860a9fdcb0::t_d2aca2fed03de4 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "9753f8076a637efbbbb961a3ca066f610a5bedb4",
+  "prompts": {},
+  "sessions": {
+    "s_70c4860a9fdcb0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "36c68dda-a3c6-45d1-957f-7e42d09c482b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Anissa Rashid <anissarashid@users.noreply.github.com>"
+    }
+  }
+}
