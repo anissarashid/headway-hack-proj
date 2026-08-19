@@ -45,6 +45,9 @@ loadgen/                       deterministic synthetic load generator   (M2)
   src/loadgen/config.py        seed constant, counts, distributions
   src/loadgen/seed.py          the generator, loader and CLI
   src/loadgen/__main__.py      the churn loop: the timeline a replay replays
+deid/                          de-identification transformer            (M4)
+  policy/clinic.yml            the policy: the auditable artifact
+  src/deid/policy.py           the typed policy model, validated at the edge
 hack/
   forward.sh                   backgrounded port-forwards behind a PID file
   verify.sh                    M1 broker/registry/console acceptance checks
@@ -164,6 +167,72 @@ way that does not look like its cause.
   `cleanup.policy=delete`. Auto-created topics inherit broker defaults, and a
   compacted `clean.*` topic destroys the history point-in-time replay depends on
   while looking perfectly healthy.
+
+## De-identification policy
+
+`deid/policy/clinic.yml` is the artifact. When someone asks what we did to
+`ssn`, the answer is a line in a file under version control, not a branch buried
+in a transformer.
+
+```
+make deid-deps     # uv sync
+make policy-check  # validate the policy and print what it actually says
+make deid-test     # unit tests; no cluster, no database
+```
+
+Every column of every captured table appears exactly once, including the ones
+that survive untouched, because a column nobody wrote down is a column nobody
+reviewed. `on_uncovered_column: halt_topic` is what makes that true going
+forward: a column added to the source with no rule stops that one topic at
+startup instead of leaking. The only alternative setting is `drop_column` —
+there is deliberately no `passthrough`.
+
+`deid/src/deid/policy.py` parses the file into frozen dataclasses once, at
+startup, and no raw dict escapes that module. Everything is checked there rather
+than at record time, so a mistake surfaces in a file a human is reading instead
+of as a `KeyError` on record forty thousand of a replay with a half-written
+clean stream behind it. Each failure names the table, the column and the
+problem:
+
+```
+clinic.yml: public.patients.patient_id: op 'hmac' requires argument 'domain'
+```
+
+Six ops, and the arguments each one cannot work without:
+
+| op | what it does | why it needs what it needs |
+| --- | --- | --- |
+| `hmac` | keyed hash, requires `domain` | the domain is what keeps joins working: two columns hashed under `patient` land on the same token, one under another domain cannot be joined to them. No default is right more often than wrong. |
+| `fake` | plausible synthetic value, requires `kind` | a name column full of nulls breaks every UI downstream and is no safer than a fake name. `kind` is a closed set, so a typo fails at startup rather than mid-topic. |
+| `generalize` | coarsen, requires `to` | the op that decides whether the replica is worth having. `date_of_birth` → `birth_year` with `cap_age: 89` keeps age cohorts and collapses the Safe Harbor tail; masking to NULL is trivially safe and useless. |
+| `date_shift` | move a timestamp, requires `anchor` | one constant offset per anchor entity. A global shift is a caesar cipher on the calendar; a per-record shift destroys every interval, which is usually the reason the data was wanted. |
+| `drop` | remove from the clean schema | not null — remove. A nulled column still says the source had one. |
+| `passthrough` | copy unchanged | written down explicitly so it was reviewed. |
+
+Three checks are load-bearing rather than tidy:
+
+- **Nothing may address the `source` block.** Replay works because each cleaned
+  record's Kafka timestamp is `source.ts_ms`, so `offsets_for_times(T)` is an
+  exact answer. A policy able to rewrite or drop it could destroy the timeline
+  while every record still looked de-identified, so the envelope is not
+  addressable at all — `source`, `op`, `ts_ms` and `transaction` all raise.
+- **A `date_shift` anchor must be a column the same table covers**, must not be
+  the column itself, and must not be another shifted column — anchoring on a
+  moving value gives a per-record offset and silently destroys intervals.
+- **A duplicate key is an error.** YAML lets a second `ssn:` win silently, which
+  is exactly the audit failure the file exists to prevent.
+
+The tests check the shipped policy against the source DDL in both directions: a
+missing rule halts a topic on the day it deploys, and a rule for a column that
+does not exist is worse — it reads like protection in review and does nothing.
+
+Two things the current policy does not do, recorded here rather than discovered
+later. `notes.body` and `appointments.intake_answers` are **dropped**, not
+scrubbed: free text has no column-level answer, and passing it through would
+make every other rule in the file decorative. And date shift protects against
+re-identification from the replica's contents, not against someone who can also
+read the clean topics — the Kafka record timestamp is the unshifted commit time,
+by design.
 
 ## Milestone status
 
