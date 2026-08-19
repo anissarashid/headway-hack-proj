@@ -293,6 +293,53 @@ print(ops.build(r, "string", keys=k).apply("  MRN-000482 "))'; \
 	fi; \
 	echo "PASS: every op's two halves agree, and hmac is stable across processes"
 
+# ---- the pit CLI -----------------------------------------------------------
+# The sink's schema comes from the registered clean Avro schemas, so `initdb`
+# needs somewhere to read them from. Until M4 registers them there is nothing in
+# the registry, and SCHEMA_DIR points at the checked-in fixtures instead -- same
+# code path, schemas from disk. Set SCHEMA_DIR= (empty) to use the registry.
+PIT_DB     ?= pit_base
+SCHEMA_DIR ?= pit/tests/fixtures/clean
+SINK_DSN   ?= host=127.0.0.1 port=5433 user=$(SINK_PGUSER) password=pit-dev-password dbname=$(SINK_PGDATABASE)
+
+.PHONY: pit-deps
+pit-deps: ## Create the pit venv and install pinned dependencies
+	cd pit && $(UV) sync
+
+.PHONY: pit-test
+pit-test: ## Unit tests for the pit CLI; no cluster required
+	cd pit && $(UV) pytest
+
+.PHONY: fixtures
+fixtures: ## Regenerate the clean schema fixtures from raw + the de-id policy
+	./deid/.venv/bin/python hack/gen-clean-fixtures.py
+
+.PHONY: initdb
+initdb: ## Create $(PIT_DB) in the sink with tables from the clean Avro schemas
+	cd pit && PIT_SINK_DSN="$(SINK_DSN)" $(UV) python -m pit.cli initdb \
+	  --db $(PIT_DB) $(if $(SCHEMA_DIR),--schema-dir ../$(SCHEMA_DIR),)
+
+.PHONY: initdb-plan
+initdb-plan: ## Print the DDL `initdb` would run, without running it
+	@cd pit && PIT_SINK_DSN="$(SINK_DSN)" $(UV) python -m pit.cli initdb \
+	  --db $(PIT_DB) $(if $(SCHEMA_DIR),--schema-dir ../$(SCHEMA_DIR),) --dry-run
+
+.PHONY: pit-check
+pit-check: ## DATA-714 acceptance check: the sink's types are the policy's types
+	@set -euo pipefail; \
+	echo "==> unit tests, including the ones that need the sink"; \
+	cd pit && PIT_TEST_SINK_DSN="$(SINK_DSN)" $(UV) pytest; \
+	cd ..; \
+	echo "==> initdb, twice -- the second run must be a no-op"; \
+	$(MAKE) --no-print-directory initdb PIT_DB=$(PIT_DB) >/dev/null; \
+	$(MAKE) --no-print-directory initdb PIT_DB=$(PIT_DB) >/dev/null; \
+	echo "==> what landed in $(PIT_DB)"; \
+	$(KUBECTL) exec -i sts/$(SINK_STS) -- \
+		psql -U $(SINK_PGUSER) -d $(PIT_DB) --no-psqlrc -f - < scripts/verify-sink-schema.sql
+
+.PHONY: verify-initdb
+verify-initdb: pit-check ## Alias for pit-check
+
 # ---- churn -----------------------------------------------------------------
 # The seed gives one state; churn gives a timeline with distinguishable points in
 # it. Bounded three ways (duration, transactions, ledger rows) because cleaned

@@ -1,0 +1,345 @@
+{
+  "connect.name": "clean.public.claims.Envelope",
+  "connect.version": 2,
+  "fields": [
+    {
+      "default": null,
+      "name": "before",
+      "type": [
+        "null",
+        {
+          "connect.name": "clean.public.claims.Value",
+          "fields": [
+            {
+              "name": "claim_id",
+              "type": "string"
+            },
+            {
+              "name": "patient_id",
+              "type": "string"
+            },
+            {
+              "name": "appointment_id",
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            {
+              "name": "billed_amount",
+              "type": {
+                "connect.name": "org.apache.kafka.connect.data.Decimal",
+                "connect.parameters": {
+                  "connect.decimal.precision": "12",
+                  "scale": "2"
+                },
+                "connect.version": 1,
+                "logicalType": "decimal",
+                "precision": 12,
+                "scale": 2,
+                "type": "bytes"
+              }
+            },
+            {
+              "name": "allowed_amount",
+              "type": [
+                "null",
+                {
+                  "connect.name": "org.apache.kafka.connect.data.Decimal",
+                  "connect.parameters": {
+                    "connect.decimal.precision": "12",
+                    "scale": "2"
+                  },
+                  "connect.version": 1,
+                  "logicalType": "decimal",
+                  "precision": 12,
+                  "scale": 2,
+                  "type": "bytes"
+                }
+              ]
+            },
+            {
+              "name": "paid_amount",
+              "type": [
+                "null",
+                {
+                  "connect.name": "org.apache.kafka.connect.data.Decimal",
+                  "connect.parameters": {
+                    "connect.decimal.precision": "12",
+                    "scale": "2"
+                  },
+                  "connect.version": 1,
+                  "logicalType": "decimal",
+                  "precision": 12,
+                  "scale": 2,
+                  "type": "bytes"
+                }
+              ]
+            },
+            {
+              "name": "patient_responsibility",
+              "type": [
+                "null",
+                {
+                  "connect.name": "org.apache.kafka.connect.data.Decimal",
+                  "connect.parameters": {
+                    "connect.decimal.precision": "12",
+                    "scale": "2"
+                  },
+                  "connect.version": 1,
+                  "logicalType": "decimal",
+                  "precision": 12,
+                  "scale": 2,
+                  "type": "bytes"
+                }
+              ]
+            },
+            {
+              "name": "diagnosis_codes",
+              "type": {
+                "items": [
+                  "null",
+                  "string"
+                ],
+                "type": "array"
+              }
+            },
+            {
+              "name": "procedure_code",
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            {
+              "name": "claim_status",
+              "type": {
+                "connect.default": "submitted",
+                "type": "string"
+              }
+            },
+            {
+              "name": "submitted_at",
+              "type": [
+                "null",
+                {
+                  "connect.default": "1970-01-01T00:00:00.000000Z",
+                  "connect.name": "io.debezium.time.ZonedTimestamp",
+                  "connect.version": 1,
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "adjudicated_at",
+              "type": [
+                "null",
+                {
+                  "connect.name": "io.debezium.time.ZonedTimestamp",
+                  "connect.version": 1,
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "created_at",
+              "type": [
+                "null",
+                {
+                  "connect.default": "1970-01-01T00:00:00.000000Z",
+                  "connect.name": "io.debezium.time.ZonedTimestamp",
+                  "connect.version": 1,
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "updated_at",
+              "type": [
+                "null",
+                {
+                  "connect.default": "1970-01-01T00:00:00.000000Z",
+                  "connect.name": "io.debezium.time.ZonedTimestamp",
+                  "connect.version": 1,
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "name": "Value",
+          "type": "record"
+        }
+      ]
+    },
+    {
+      "default": null,
+      "name": "after",
+      "type": [
+        "null",
+        "Value"
+      ]
+    },
+    {
+      "name": "source",
+      "type": {
+        "connect.name": "io.debezium.connector.postgresql.Source",
+        "fields": [
+          {
+            "name": "version",
+            "type": "string"
+          },
+          {
+            "name": "connector",
+            "type": "string"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "ts_ms",
+            "type": "long"
+          },
+          {
+            "default": "false",
+            "name": "snapshot",
+            "type": [
+              {
+                "connect.default": "false",
+                "connect.name": "io.debezium.data.Enum",
+                "connect.parameters": {
+                  "allowed": "true,last,false,incremental"
+                },
+                "connect.version": 1,
+                "type": "string"
+              },
+              "null"
+            ]
+          },
+          {
+            "name": "db",
+            "type": "string"
+          },
+          {
+            "default": null,
+            "name": "sequence",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          {
+            "default": null,
+            "name": "ts_us",
+            "type": [
+              "null",
+              "long"
+            ]
+          },
+          {
+            "default": null,
+            "name": "ts_ns",
+            "type": [
+              "null",
+              "long"
+            ]
+          },
+          {
+            "name": "schema",
+            "type": "string"
+          },
+          {
+            "name": "table",
+            "type": "string"
+          },
+          {
+            "default": null,
+            "name": "txId",
+            "type": [
+              "null",
+              "long"
+            ]
+          },
+          {
+            "default": null,
+            "name": "lsn",
+            "type": [
+              "null",
+              "long"
+            ]
+          },
+          {
+            "default": null,
+            "name": "xmin",
+            "type": [
+              "null",
+              "long"
+            ]
+          }
+        ],
+        "name": "Source",
+        "namespace": "io.debezium.connector.postgresql",
+        "type": "record"
+      }
+    },
+    {
+      "default": null,
+      "name": "transaction",
+      "type": [
+        "null",
+        {
+          "connect.name": "event.block",
+          "connect.version": 1,
+          "fields": [
+            {
+              "name": "id",
+              "type": "string"
+            },
+            {
+              "name": "total_order",
+              "type": "long"
+            },
+            {
+              "name": "data_collection_order",
+              "type": "long"
+            }
+          ],
+          "name": "block",
+          "namespace": "event",
+          "type": "record"
+        }
+      ]
+    },
+    {
+      "name": "op",
+      "type": "string"
+    },
+    {
+      "default": null,
+      "name": "ts_ms",
+      "type": [
+        "null",
+        "long"
+      ]
+    },
+    {
+      "default": null,
+      "name": "ts_us",
+      "type": [
+        "null",
+        "long"
+      ]
+    },
+    {
+      "default": null,
+      "name": "ts_ns",
+      "type": [
+        "null",
+        "long"
+      ]
+    }
+  ],
+  "name": "Envelope",
+  "namespace": "clean.public.claims",
+  "type": "record"
+}

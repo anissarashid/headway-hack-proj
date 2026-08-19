@@ -1,0 +1,12 @@
+{
+  "connect.name": "raw.public.claims.Key",
+  "fields": [
+    {
+      "name": "claim_id",
+      "type": "long"
+    }
+  ],
+  "name": "Key",
+  "namespace": "raw.public.claims",
+  "type": "record"
+}

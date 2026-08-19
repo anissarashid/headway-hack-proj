@@ -1,0 +1,12 @@
+{
+  "connect.name": "clean.public.claims.Key",
+  "fields": [
+    {
+      "name": "claim_id",
+      "type": "string"
+    }
+  ],
+  "name": "Key",
+  "namespace": "clean.public.claims",
+  "type": "record"
+}

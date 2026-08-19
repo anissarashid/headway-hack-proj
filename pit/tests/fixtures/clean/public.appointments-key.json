@@ -1,0 +1,12 @@
+{
+  "connect.name": "clean.public.appointments.Key",
+  "fields": [
+    {
+      "name": "appointment_id",
+      "type": "string"
+    }
+  ],
+  "name": "Key",
+  "namespace": "clean.public.appointments",
+  "type": "record"
+}

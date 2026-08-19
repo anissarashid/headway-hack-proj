@@ -1,0 +1,12 @@
+{
+  "connect.name": "clean.public.patients.Key",
+  "fields": [
+    {
+      "name": "patient_id",
+      "type": "string"
+    }
+  ],
+  "name": "Key",
+  "namespace": "clean.public.patients",
+  "type": "record"
+}

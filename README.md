@@ -52,9 +52,18 @@ deid/                          de-identification transformer            (M4)
   src/deid/ops.py              what each op does to a value and to its type
   src/deid/avro.py             the Avro type model both halves agree on
   src/deid/vocab.py            frozen word lists `fake` draws from
+pit/                           the pit CLI: initdb, tail, replay, snapshot     (M5-M7)
+  src/pit/ddl.py               clean Avro schema -> sink DDL, additively reconciled
+  src/pit/envelope.py          CDC envelope -> upsert/delete/skip, pure
+  src/pit/applier.py           statements -> SQL, one transaction, idempotent
+  src/pit/registry.py          read-only schema registry client
+  src/pit/cli.py               `pit initdb`
+  tests/fixtures/raw/          the schemas Debezium registered (ground truth)
+  tests/fixtures/clean/        the schemas M4 will register (derived; see its README)
 hack/
   forward.sh                   backgrounded port-forwards behind a PID file
   verify.sh                    M1 broker/registry/console acceptance checks
+  gen-clean-fixtures.py        derives pit/tests/fixtures/clean from raw + the policy
 images/
   connect/                     Debezium + Confluent Avro converter   (M3)
   deid/                        python + uv base                (M4)
@@ -62,6 +71,7 @@ images/
 scripts/
   verify-conf-docker.sh        cluster-free check of the rendered chart
   verify-schema.sql            schema and replica-identity assertions
+  verify-sink-schema.sql       the sink's types are the policy's types  (M5)
   verify-wal.sql               proves the before image reaches the WAL
 spikes/
   data-703-debezium-avro-registry/   registry-accepts-Debezium-Avro spike + findings (M3)
@@ -297,7 +307,11 @@ by design.
 - **M1 — Cluster and chart skeleton:** ✅
 - **M2 — Source Postgres and clinic schema:** ✅
 - **M3 — Connect image and Debezium Avro source:** ✅
-- M4–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
+- **M5 — Applier and live sink:** in progress. The sink is deployed
+  ([sink-pg](#sink-pg)) and `pit initdb` builds its schema from the registered
+  clean Avro schemas ([pit initdb](#pit-initdb--the-sink-schema-comes-from-the-registry)).
+  The applier's envelope translation and SQL are done; its Kafka consumer waits on M4.
+- M4, M6–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
 
 ## source-pg
 
@@ -421,6 +435,118 @@ Waits for rollout, lists the databases, asserts `pit` is a superuser, and create
 and drops a database — which is the thing M5 actually needs of it. It prints
 `wal_level` too, expecting `replica`: the sink decoding nothing is a property
 worth seeing rather than assuming.
+
+## pit initdb — the sink schema comes from the registry
+
+```
+make initdb          # create pit_base and its tables
+make initdb-plan     # print the DDL without running it
+make pit-check       # the acceptance check
+```
+
+The sink's schema is the **post-policy** schema, and the only place that shape is
+written down is the clean Avro schema the transformer registered. `ssn` does not
+exist. `date_of_birth` is an integer year. Every primary key is `text`, because
+the policy hashes the ids. Reading the source's `information_schema` and
+re-applying the policy would duplicate logic that already lives in the registry,
+and the two copies would disagree the first time a rule changed.
+
+So `pit initdb` reads the registry and emits DDL, and the registry is the single
+versioned source of truth for what the sink looks like.
+
+### Before M4 exists
+
+Nothing registers `clean.*` subjects until the transformer runs, so `initdb`
+defaults to the checked-in schema fixtures instead — the same code path, fed from
+disk:
+
+```
+make initdb                                  # SCHEMA_DIR defaults to the fixtures
+make initdb SCHEMA_DIR=                      # use the registry instead
+```
+
+Those fixtures are *derived*, not hand-authored: `hack/gen-clean-fixtures.py`
+runs the merged `deid.ops.build` over `deid/policy/clinic.yml` against the raw
+schemas Debezium actually registered. See
+[`pit/tests/fixtures/README.md`](pit/tests/fixtures/README.md) for the provenance
+and for the one column that needs a patch.
+
+### The type map
+
+Empirical, not assumed — these are the shapes the registry returns for this
+schema:
+
+| Clean Avro | Postgres |
+| -- | -- |
+| `string` / `["null","string"]` | `text` |
+| `string` + `io.debezium.time.ZonedTimestamp` | `timestamptz` |
+| `string` + `io.debezium.data.Enum` | `text` |
+| `int`, `long`, `boolean` | `integer`, `bigint`, `boolean` |
+| `bytes` + `logicalType: decimal` | `numeric(p,s)` from `precision`/`scale` |
+| `{"type":"array","items":["null","string"]}` | `text[]` |
+| dropped by the policy | no column at all |
+
+Three of those are load-bearing and easy to get wrong:
+
+- **Every timestamp is a string on the wire.** A `timestamptz` column becomes an
+  `io.debezium.time.ZonedTimestamp`, which is ISO-8601 text, whatever
+  `time.precision.mode` says. Storing the wire type would leave every date query
+  in the replica broken while looking fine. There is no `timestamp-millis`
+  anywhere in this schema.
+- **Every timestamp column is nullable in the sink**, even where the source column
+  is `NOT NULL`. `date_shift` widens a ZonedTimestamp on purpose, because a string
+  is not necessarily an instant.
+- **`decimal.handling.mode=precise` puts an unscaled big-endian integer in
+  `bytes`.** Mapped by primitive that becomes `bytea`, which compares equal to
+  nothing.
+
+An Avro type with no entry in the map **raises** rather than falling back to
+`text`. A column silently stored as text is a column whose queries quietly return
+the wrong answer, which is the whole failure this module exists to prevent.
+
+### Schema changes are additive, or they stop
+
+`initdb` is idempotent, and `pit tail` will call the same function at startup, so
+it never matters which ran first. On a table that already exists it reconciles:
+
+- a **column the sink lacks** gets an `ALTER TABLE ADD COLUMN`, always nullable.
+  This is the case M4's headline demo produces — cover a new source column in the
+  policy, the topic un-halts, and the next record carries a field the sink has no
+  column for. Additive has to be automatic or the demo stalls.
+- a **column that changed type** raises. There is no rule for what the existing
+  values should become, and guessing one rewrites data on an assumption.
+- a **column the schema no longer has** raises. If the policy started dropping
+  something, leaving the old values in the sink keeps exactly the PHI the change
+  was meant to remove.
+
+The last two are safe failures rather than solved cases — the same shape as the
+transformer halting a single topic.
+
+### Where the offsets live
+
+`ensure_schema` also creates `pit_meta.applied_offsets`, and the applier writes it
+**in the same transaction as the data**. That is deliberate: a snapshot cut with
+`CREATE DATABASE snap_x TEMPLATE pit_base` then carries the manifest it was cut
+at, with no window in which the recorded position and the cloned data could
+disagree. A snapshot is not a special artifact — it is a database plus a position
+in the log.
+
+The cost is that `pit_meta` is inside every clone, so M8's oracle compare and PHI
+leak scan have to exclude the schema.
+
+### Verifying
+
+```
+make pit-check
+```
+
+Runs the unit tests (including the ones that need a live sink), runs `initdb`
+twice to prove the second run is a no-op, then asserts against `pit_base` itself:
+the four `claims` amounts are `numeric(12,2)`; all 17 timestamp columns are
+`timestamptz`; `diagnosis_codes` is `text[]`; every column the policy drops is
+absent, `notes.body` included; `date_of_birth` is an integer year; all five
+primary keys are `text`; and there are no foreign keys, because per-table topics
+replay independently and any FK would reject a legal replay.
 
 ## Clinic schema
 
