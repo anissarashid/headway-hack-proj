@@ -47,6 +47,15 @@ TIMESTAMP = "io.debezium.time.Timestamp"  # long, ms since epoch, UTC, no zone
 MICRO_TIMESTAMP = "io.debezium.time.MicroTimestamp"  # long, µs
 NANO_TIMESTAMP = "io.debezium.time.NanoTimestamp"  # long, ns
 ZONED_TIMESTAMP = "io.debezium.time.ZonedTimestamp"  # string, ISO-8601 + offset
+# The same instants, spelled as Kafka Connect's own logical types. The
+# connector runs with ``time.precision.mode=connect``, which is what makes a
+# date arrive as ``org.apache.kafka.connect.data.Date`` rather than
+# ``io.debezium.time.Date`` -- so both spellings reach this module, and an op
+# that knew only Debezium's would refuse date_of_birth at startup against the
+# schema the connector actually registers.
+CONNECT_DATE = "org.apache.kafka.connect.data.Date"  # int, days since 1970-01-01
+CONNECT_TIME = "org.apache.kafka.connect.data.Time"  # int, ms since midnight
+CONNECT_TIMESTAMP = "org.apache.kafka.connect.data.Timestamp"  # long, ms since epoch
 JSON = "io.debezium.data.Json"  # string holding a json document
 ENUM = "io.debezium.data.Enum"  # string, with an "allowed" property
 # numeric/decimal, under the connector's three decimal.handling.mode settings:
