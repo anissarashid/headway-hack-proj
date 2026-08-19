@@ -44,6 +44,7 @@ charts/pit/                    umbrella Helm chart
 loadgen/                       deterministic synthetic load generator   (M2)
   src/loadgen/config.py        seed constant, counts, distributions
   src/loadgen/seed.py          the generator, loader and CLI
+  src/loadgen/__main__.py      the churn loop: the timeline a replay replays
 hack/
   forward.sh                   backgrounded port-forwards behind a PID file
   verify.sh                    M1 broker/registry/console acceptance checks
@@ -79,6 +80,10 @@ open  http://localhost:8080          # Redpanda Console
 # populate the source database (needs `make forward` running):
 make seed        # wipe and repopulate the clinic schema
 make seed-verify # load generator acceptance check
+
+# give the population a timeline to be replayed against:
+make churn       # five minutes of inserts, updates and deletes
+make churn-verify # the ledger replays to the live tables
 
 make nuke        # tear everything down, including PVCs
 ```
@@ -334,7 +339,7 @@ returns rows, with no network, no filesystem and no clock involved.
 
 ```
 make loadgen-deps   # uv sync
-make forward        # in another shell
+make forward        # backgrounded; make forward-stop tears it down
 make seed           # wipe and repopulate
 make seed-verify    # acceptance check
 ```
@@ -358,3 +363,46 @@ The whole seed lands in one transaction, so the ledger records it at a single
 `tx_at`: a point-in-time query before that instant sees an empty database and
 one after it sees the whole population, with no half-loaded state in between for
 a replay to land on. `loadgen/README.md` has the details.
+
+## Churn
+
+A static seed gives one state. Point-in-time replay needs history to replay, so
+`python -m loadgen` keeps mutating the seeded database — inserts, updates and
+deletes, each in its own explicit transaction, at a configurable rate.
+
+```
+make churn          # five minutes at two transactions per second
+make churn-verify   # check the ledger without changing anything
+make churn-check    # acceptance check
+```
+
+Three properties are the point.
+
+**Every mutation is in the ledger, and the ledger is written by the trigger.**
+Churn does not append to `<table>_history`; `pit_audit` does, inside the same
+transaction as the change, which is what lets it be M8's oracle. What churn does
+is read the ledger back per transaction and reconcile it against what it meant to
+do, which is where cascade fan-out becomes visible: deleting one appointment
+deletes its claims and sets `notes.appointment_id` to NULL, so one statement
+becomes history in three tables, and the notes arrive as *updates*.
+
+**Some transactions touch several tables at one `tx_at`.** A transaction that
+inserts a patient, their first appointment and their intake note has no instant
+at which only part of it is true, so a replay that produces one has stopped inside
+a transaction rather than between two. That is what `--snap-to-txn` is for, and
+without such transactions in the data the flag has nothing to be right or wrong
+about.
+
+**The volume is bounded.** Cleaned topics run at infinite retention on a laptop
+PVC, so there is no unbounded mode: wall-clock duration, transaction count and
+total ledger rows are all capped, and insert/delete weights are biased to hold
+each table inside a band around its configured size, so a long run churns instead
+of growing.
+
+Because there is one writer and each transaction starts only after the previous
+one committed, `tx_at` strictly increases and every transaction is a distinct
+point a `T` can land between. `--verify` checks that, and checks the thing the
+ledger exists for: replay it to its newest `tx_at` — newest entry per key, absent
+if it was a delete — and the result has to be the live table, row for row. That
+is the query M6/M8 will run at an arbitrary `T`; `T = now` is the one case with an
+independent answer to compare against.
