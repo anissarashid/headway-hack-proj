@@ -231,9 +231,33 @@ deid-deps: ## Create the deid venv and install pinned dependencies
 policy-check: ## Validate the de-id policy and print its rules
 	@cd deid && $(UV) python -m deid.policy ../$(POLICY)
 
+.PHONY: ops-demo
+ops-demo: ## Show what each op does to a value and to its Avro type
+	@cd deid && $(UV) python -m deid.ops
+
 .PHONY: deid-test
 deid-test: ## Unit tests for the de-id transformer; no cluster required
 	cd deid && $(UV) pytest
+
+.PHONY: ops-check
+ops-check: ## Acceptance check: the two halves of every op agree, across processes
+	@set -euo pipefail; \
+	cd deid; \
+	echo "==> op tests, including the conformance property"; \
+	$(UV) pytest tests/test_avro.py tests/test_ops.py; \
+	echo "==> the same surrogate out of two separate processes, two hash seeds"; \
+	script='from datetime import date; from deid import ops, policy; \
+k = ops.Keys(salt=b"acceptance-check-salt-not-a-real-one", reference_date=date(2026, 8, 1)); \
+r = policy.Rule(table="public.patients", column="mrn", op=policy.Hmac(domain="patient")); \
+print(ops.build(r, "string", keys=k).apply("  MRN-000482 "))'; \
+	first=$$(PYTHONHASHSEED=0 $(UV) python -c "$$script"); \
+	second=$$(PYTHONHASHSEED=99991 $(UV) python -c "$$script"); \
+	echo "    run 1  $$first"; \
+	echo "    run 2  $$second"; \
+	if [[ "$$first" != "$$second" ]]; then \
+		echo "FAIL: the same input under the same salt gave two surrogates"; exit 1; \
+	fi; \
+	echo "PASS: every op's two halves agree, and hmac is stable across processes"
 
 # ---- churn -----------------------------------------------------------------
 # The seed gives one state; churn gives a timeline with distinguishable points in

@@ -182,6 +182,48 @@ class Drop(Op):
 
 
 @dataclass(frozen=True)
+class Null(Op):
+    """Keep the column, always emit null.
+
+    The narrow case between ``drop`` and everything else: something downstream
+    -- a view, an ORM, a report -- needs the column to exist, and nothing may
+    see what was in it. Weaker than ``drop``, because a nulled column still
+    tells you the source had one, so ``drop`` is the default answer and this is
+    the exception that has to be argued for in review.
+
+    Spell it ``op: "null"`` in YAML. Unquoted, ``op: null`` is YAML's null and
+    the rule has no op at all; the parser says so rather than letting it read
+    as this.
+    """
+
+    name = "null"
+
+
+@dataclass(frozen=True)
+class Redact(Op):
+    """Replace the value with one fixed constant.
+
+    Every row lands on the same string, so unlike ``hmac`` this destroys
+    equality: nothing joins, nothing groups, nothing counts distinct. That is
+    the point of choosing it -- it is what to use when the column has to stay
+    readable as a column ("[redacted]" in a UI) and must carry no information
+    at all.
+    """
+
+    name = "redact"
+    value: str = "[redacted]"
+
+    def validate(self, *, source: str | None, table: str, column: str) -> None:
+        if not self.value:
+            raise InvalidArgumentError(
+                "argument 'value' must not be empty (use op: drop, or op: \"null\")",
+                source=source,
+                table=table,
+                column=column,
+            )
+
+
+@dataclass(frozen=True)
 class Hmac(Op):
     """Replace the value with a keyed hash, stable within a domain.
 
@@ -312,27 +354,21 @@ class Generalize(Op):
 
 
 @dataclass(frozen=True)
-class DateShift(Op):
-    """Move the timestamp by an offset that is constant per anchor entity.
+class Anchored(Op):
+    """An op whose parameter is constant per entity rather than per record.
 
-    The anchor is the whole design. Shifting every timestamp by the same amount
-    is a caesar cipher on the calendar; shifting each one independently
-    destroys every interval -- length of stay, time to adjudication, the gap
-    between two visits -- which is usually the reason anyone wanted the data.
-    Anchoring the offset on the patient keeps every interval *within* a patient
-    exact while decoupling patients from each other and from the real calendar,
-    so there is no default anchor that is safe to guess.
+    Two ops need this and they need exactly the same guarantees, so the checks
+    live once. The anchor names a sibling column whose value identifies the
+    entity the offset belongs to: same entity, same offset, every record, every
+    table, every restart.
 
-    Known limitation, recorded here because the policy file is where someone
-    will look for it: the shift is not hidden from an attacker who can also see
-    the Kafka record timestamp, which is the unshifted ``source.ts_ms``. That
-    is a deliberate trade -- the unshifted commit time is what makes
-    point-in-time replay exact -- and it means date shift protects against
-    re-identification from the replica's contents, not against someone who
-    already has read access to the clean topics.
+    The anchor is read from the *raw* record, before any op has touched it, so
+    it may name a column the policy drops or hashes -- what matters is that the
+    value is the entity's identity, not that it survives to the clean side.
+    That also means the transformer does not have to apply rules in dependency
+    order, which is one class of bug that cannot then happen.
     """
 
-    name = "date_shift"
     anchor: str
 
     def validate(self, *, source: str | None, table: str, column: str) -> None:
@@ -354,7 +390,7 @@ class DateShift(Op):
     ) -> None:
         if self.anchor == column:
             raise InvalidArgumentError(
-                "a date_shift cannot be anchored on itself",
+                f"a {self.name} cannot be anchored on itself",
                 source=source,
                 table=table,
                 column=column,
@@ -368,10 +404,78 @@ class DateShift(Op):
                 table=table,
                 column=column,
             )
-        if isinstance(anchored_on.op, DateShift):
+        if isinstance(anchored_on.op, Anchored):
             raise InvalidArgumentError(
-                f"anchor {self.anchor!r} is itself date_shift'd, so the offset would "
-                "vary per record and every interval in the table would be destroyed",
+                f"anchor {self.anchor!r} is itself {anchored_on.op.name}'d, so it is a "
+                "measurement rather than an identity: the offset would vary per record "
+                "and every interval and ratio the anchor exists to preserve would be "
+                "destroyed",
+                source=source,
+                table=table,
+                column=column,
+            )
+
+
+@dataclass(frozen=True)
+class DateShift(Anchored):
+    """Move the timestamp by an offset that is constant per anchor entity.
+
+    The anchor is the whole design. Shifting every timestamp by the same amount
+    is a caesar cipher on the calendar; shifting each one independently
+    destroys every interval -- length of stay, time to adjudication, the gap
+    between two visits -- which is usually the reason anyone wanted the data.
+    Anchoring the offset on the patient keeps every interval *within* a patient
+    exact while decoupling patients from each other and from the real calendar,
+    so there is no default anchor that is safe to guess.
+
+    Known limitation, recorded here because the policy file is where someone
+    will look for it: the shift is not hidden from an attacker who can also see
+    the Kafka record timestamp, which is the unshifted ``source.ts_ms``. That
+    is a deliberate trade -- the unshifted commit time is what makes
+    point-in-time replay exact -- and it means date shift protects against
+    re-identification from the replica's contents, not against someone who
+    already has read access to the clean topics.
+    """
+
+    name = "date_shift"
+
+
+# The widest jitter that is still a jitter. Past this the column is not a
+# perturbed amount any more, it is a different amount wearing the same name,
+# and a policy that wanted that should say `redact` or `null` and be read as
+# saying it.
+MAX_JITTER_PCT = 25
+
+
+@dataclass(frozen=True)
+class NumericJitter(Anchored):
+    """Perturb a number by a percentage that is constant per anchor entity.
+
+    For amounts, and the same argument as :class:`DateShift` one dimension
+    over. A per-record factor destroys every relationship inside a row --
+    billed >= allowed >= paid, the parts summing to the whole -- which is most
+    of what makes claims data worth replicating. A per-entity factor keeps all
+    of them exactly and moves the entity off its real numbers.
+
+    The trade that buys, recorded here because the policy file is where someone
+    will look for it: within one anchor entity the jitter is a single scalar
+    multiple, so anyone who knows one true amount for that entity can recover
+    the rest. It defends against a reader of the replica, not against someone
+    who already has a bill.
+
+    Note what it does *not* do to the join graph: amounts are payload, not
+    keys, so nothing here has to agree with anything in another table.
+    """
+
+    name = "numeric_jitter"
+    pct: int
+
+    def validate(self, *, source: str | None, table: str, column: str) -> None:
+        super().validate(source=source, table=table, column=column)
+        if not 1 <= self.pct <= MAX_JITTER_PCT:
+            raise InvalidArgumentError(
+                f"argument 'pct' must be between 1 and {MAX_JITTER_PCT}, got {self.pct} "
+                "(a wider spread is not a jitter; say redact or \"null\" and mean it)",
                 source=source,
                 table=table,
                 column=column,
@@ -379,7 +483,20 @@ class DateShift(Op):
 
 
 OPS: Mapping[str, type[Op]] = MappingProxyType(
-    {cls.name: cls for cls in (Passthrough, Drop, Hmac, Fake, Generalize, DateShift)}
+    {
+        cls.name: cls
+        for cls in (
+            Passthrough,
+            Drop,
+            Null,
+            Redact,
+            Hmac,
+            Fake,
+            Generalize,
+            DateShift,
+            NumericJitter,
+        )
+    }
 )
 
 
@@ -559,8 +676,12 @@ def _check_type(
 def _build_op(spec: Mapping[str, Any], *, source: str | None, table: str, column: str) -> Op:
     op_name = spec.get("op")
     if op_name is None:
+        # `op: null` is YAML's null, not the op named "null". Unhelpfully, the
+        # two are indistinguishable by the time the document is parsed, so the
+        # message covers both readings rather than guessing.
+        hint = ' (for the null op, quote it: op: "null")' if "op" in spec else ""
         raise MissingArgumentError(
-            "rule has no 'op'", source=source, table=table, column=column
+            f"rule has no 'op'{hint}", source=source, table=table, column=column
         )
     if not isinstance(op_name, str):
         raise InvalidArgumentError(
