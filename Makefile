@@ -20,6 +20,10 @@ TAG        ?= dev
 STS        ?= $(RELEASE)-source-pg
 PGUSER     ?= pit
 PGDATABASE ?= pit
+# Role Debezium connects as, and the FOR ALL TABLES publication it decodes
+# through. Both are created by the chart's initdb scripts; see source-pg values.
+REPLUSER    ?= debezium
+PUBLICATION ?= dbz_publication
 # Local port `forward` maps source-pg onto; the loadgen DSN defaults here too.
 LOCAL_PORT ?= 5432
 
@@ -94,7 +98,7 @@ nuke: ## Delete the profile and ALL volumes (destroys PVCs so init SQL re-runs)
 
 # ---- verification ----------------------------------------------------------
 .PHONY: verify
-verify: ## DATA-699 acceptance check: pod ready and wal_level=logical
+verify: ## DATA-699 acceptance check: wal_level=logical, publication, before images in the WAL
 	@set -euo pipefail; \
 	echo "==> waiting for $(STS) to be ready"; \
 	$(KUBECTL) rollout status sts/$(STS) --timeout=5m; \
@@ -107,24 +111,36 @@ verify: ## DATA-699 acceptance check: pod ready and wal_level=logical
 	if [[ "$$level" != "logical" ]]; then \
 		echo "FAIL: wal_level is '$$level', expected 'logical'"; exit 1; \
 	fi; \
-	echo "==> proving a logical slot can actually be created"; \
+	echo "==> the publication Debezium decodes through"; \
 	$(KUBECTL) exec sts/$(STS) -- \
+		psql -U $(PGUSER) -d $(PGDATABASE) -c \
+		'select pubname, puballtables, pubinsert, pubupdate, pubdelete from pg_publication;'; \
+	puball=$$($(KUBECTL) exec sts/$(STS) -- \
 		psql -U $(PGUSER) -d $(PGDATABASE) -Atc \
-		"select pg_create_logical_replication_slot('pit_verify','pgoutput');" >/dev/null; \
-	$(KUBECTL) exec sts/$(STS) -- \
+		"select puballtables from pg_publication where pubname = '$(PUBLICATION)';" | tr -d '\r'); \
+	if [[ "$$puball" != "t" ]]; then \
+		echo "FAIL: publication '$(PUBLICATION)' missing or not FOR ALL TABLES (puballtables=$$puball)"; exit 1; \
+	fi; \
+	echo "==> the debezium role can open its own slot without prior setup"; \
+	super=$$($(KUBECTL) exec sts/$(STS) -- \
 		psql -U $(PGUSER) -d $(PGDATABASE) -Atc \
-		"select pg_drop_replication_slot('pit_verify');" >/dev/null; \
-	echo "PASS: wal_level=logical and logical slot creation works"
+		"select rolreplication and rolsuper from pg_roles where rolname = '$(REPLUSER)';" | tr -d '\r'); \
+	if [[ "$$super" != "t" ]]; then \
+		echo "FAIL: role '$(REPLUSER)' lacks REPLICATION or SUPERUSER"; exit 1; \
+	fi; \
+	echo "==> running scripts/verify-wal.sql"; \
+	$(KUBECTL) exec -i sts/$(STS) -- \
+		psql -U $(PGUSER) -d $(PGDATABASE) --no-psqlrc -f - < scripts/verify-wal.sql
 
 .PHONY: verify-schema
-verify-schema: ## DATA-700 acceptance check: tables, REPLICA IDENTITY FULL, history triggers
+verify-schema: ## DATA-700 acceptance check: tables, foreign keys, full replica identity
 	@set -euo pipefail; \
-	echo "==> captured tables"; \
-	$(KUBECTL) exec sts/$(STS) -- \
-		psql -U $(PGUSER) -d $(PGDATABASE) -c 'table pit_captured_tables;'; \
 	echo "==> running scripts/verify-schema.sql"; \
 	$(KUBECTL) exec -i sts/$(STS) -- \
-		psql -U $(PGUSER) -d $(PGDATABASE) --no-psqlrc -f - < scripts/verify-schema.sql
+		psql -U $(PGUSER) -d $(PGDATABASE) --no-psqlrc -f - < scripts/verify-schema.sql; \
+	echo "==> replicated tables"; \
+	$(KUBECTL) exec sts/$(STS) -- \
+		psql -U $(PGUSER) -d $(PGDATABASE) -c 'table pit_replicated_tables;'
 
 .PHONY: verify-all
 verify-all: verify-m1 verify verify-schema ## All acceptance checks against the cluster
@@ -201,6 +217,23 @@ seed-fingerprint: ## Digest whatever is currently in the clinic tables
 .PHONY: seed-test
 seed-test: ## Unit tests for the generator; no database required
 	cd loadgen && $(UV) pytest
+
+# ---- de-identification policy ----------------------------------------------
+# The policy file is the auditable artifact: `policy-check` parses it and prints
+# what it actually says, so reviewing a change is reading rules rather than YAML.
+POLICY ?= deid/policy/clinic.yml
+
+.PHONY: deid-deps
+deid-deps: ## Create the deid venv and install pinned dependencies
+	cd deid && $(UV) sync
+
+.PHONY: policy-check
+policy-check: ## Validate the de-id policy and print its rules
+	@cd deid && $(UV) python -m deid.policy ../$(POLICY)
+
+.PHONY: deid-test
+deid-test: ## Unit tests for the de-id transformer; no cluster required
+	cd deid && $(UV) pytest
 
 # ---- churn -----------------------------------------------------------------
 # The seed gives one state; churn gives a timeline with distinguishable points in

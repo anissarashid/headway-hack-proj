@@ -2,8 +2,8 @@ apiVersion: v2
 name: pit
 description: Point-in-time CDC pipeline — Postgres source, Debezium, and downstream sinks.
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 
 dependencies:
   # The official Redpanda chart brings the broker StatefulSet, schema registry
@@ -18,7 +18,7 @@ dependencies:
   # and `condition` only works through a dependency entry. Milestones flip their
   # own subchart on in values.yaml as they land.
   - name: source-pg
-    version: 0.1.0
+    version: 0.2.0
     repository: "file://charts/source-pg"
     condition: source-pg.enabled
   - name: connect

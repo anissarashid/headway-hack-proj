@@ -6,16 +6,26 @@ Confirm logical decoding is live (the acceptance check for DATA-699):
     psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -Atc 'SHOW wal_level;'
 
 Expected: logical
-{{- if .Values.clinicSchema.enabled }}
+{{- if .Values.replication.fullReplicaIdentity }}
 
-Confirm the clinic schema is captured (the acceptance check for DATA-700):
+Confirm every table is replicated in full:
 
   kubectl exec -n {{ .Release.Namespace }} sts/{{ include "source-pg.fullname" . }} -- \
-    psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -c 'table pit_captured_tables;'
+    psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -c 'table pit_replicated_tables;'
 
-Expected: patients, providers, appointments, claims and notes, each with
-relreplident=f and a <table>_history ledger. `make verify-schema` asserts it and
-proves an update writes history.
+Expected: every row relreplident=f. A table created later is included without
+being opted in -- an event trigger does it. `make verify` proves the before image
+reaches the WAL, which is the part that pg_class cannot tell you.
+{{- end }}
+{{- if .Values.replication.publication.create }}
+
+Debezium decodes through a publication that already exists, so the connector
+needs no setup SQL and no table list:
+
+  publication.name={{ .Values.replication.publication.name }}
+  publication.autocreate.mode=disabled
+
+It creates its own replication slot; this chart deliberately does not.
 {{- end }}
 
 Connect from your machine:

@@ -28,18 +28,6 @@ redpanda:
 # must exist even when disabled.
 source-pg:
   enabled: true
-  # M3/CDC: create the Debezium publication as the superuser at init, so the
-  # least-privilege `debezium` role never needs CREATE on the database, and
-  # grant it the SELECT the initial snapshot reads with. Runs after 20-schema.
-  extraInitScripts:
-    30-cdc-publication.sql: |
-      CREATE PUBLICATION pit_publication FOR TABLE
-        public.patients, public.providers, public.appointments,
-        public.claims, public.notes;
-      GRANT USAGE ON SCHEMA public TO debezium;
-      GRANT SELECT ON ALL TABLES IN SCHEMA public TO debezium;
-      ALTER DEFAULT PRIVILEGES IN SCHEMA public
-        GRANT SELECT ON TABLES TO debezium;
 
 # The Debezium Avro CDC source (M3). Reads the source-pg tables and writes Avro
 # to raw.* topics with schemas in Redpanda's registry. Needs the locally-built

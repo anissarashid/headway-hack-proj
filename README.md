@@ -36,7 +36,7 @@ charts/pit/                    umbrella Helm chart
   charts/
     source-pg/                 Postgres 16 source, wal_level=logical    (M2)
       files/initdb/20-clinic-schema.sql     clinic tables, synthetic PHI/PII
-      files/initdb/21-history-triggers.sql  the mutation ledger
+      files/replication/11-replica-identity.sql  REPLICA IDENTITY FULL, by default
     sink-pg/                   PIT sink Postgres               (M5)
     connect/                   Debezium + Avro Connect         (M3)
       connectors/source-pg.json  the Debezium connector config (registered by a hook Job)
@@ -46,6 +46,9 @@ loadgen/                       deterministic synthetic load generator   (M2)
   src/loadgen/config.py        seed constant, counts, distributions
   src/loadgen/seed.py          the generator, loader and CLI
   src/loadgen/__main__.py      the churn loop: the timeline a replay replays
+deid/                          de-identification transformer            (M4)
+  policy/clinic.yml            the policy: the auditable artifact
+  src/deid/policy.py           the typed policy model, validated at the edge
 hack/
   forward.sh                   backgrounded port-forwards behind a PID file
   verify.sh                    M1 broker/registry/console acceptance checks
@@ -55,7 +58,8 @@ images/
   pitctl/                      python + uv base                (M5/M7)
 scripts/
   verify-conf-docker.sh        cluster-free check of the rendered chart
-  verify-schema.sql            schema + ledger assertions, run by both paths
+  verify-schema.sql            schema and replica-identity assertions
+  verify-wal.sql               proves the before image reaches the WAL
 spikes/
   data-703-debezium-avro-registry/   registry-accepts-Debezium-Avro spike + findings (M3)
 ```
@@ -168,10 +172,76 @@ way that does not look like its cause.
   compacted `clean.*` topic destroys the history point-in-time replay depends on
   while looking perfectly healthy.
 
+## De-identification policy
+
+`deid/policy/clinic.yml` is the artifact. When someone asks what we did to
+`ssn`, the answer is a line in a file under version control, not a branch buried
+in a transformer.
+
+```
+make deid-deps     # uv sync
+make policy-check  # validate the policy and print what it actually says
+make deid-test     # unit tests; no cluster, no database
+```
+
+Every column of every captured table appears exactly once, including the ones
+that survive untouched, because a column nobody wrote down is a column nobody
+reviewed. `on_uncovered_column: halt_topic` is what makes that true going
+forward: a column added to the source with no rule stops that one topic at
+startup instead of leaking. The only alternative setting is `drop_column` —
+there is deliberately no `passthrough`.
+
+`deid/src/deid/policy.py` parses the file into frozen dataclasses once, at
+startup, and no raw dict escapes that module. Everything is checked there rather
+than at record time, so a mistake surfaces in a file a human is reading instead
+of as a `KeyError` on record forty thousand of a replay with a half-written
+clean stream behind it. Each failure names the table, the column and the
+problem:
+
+```
+clinic.yml: public.patients.patient_id: op 'hmac' requires argument 'domain'
+```
+
+Six ops, and the arguments each one cannot work without:
+
+| op | what it does | why it needs what it needs |
+| --- | --- | --- |
+| `hmac` | keyed hash, requires `domain` | the domain is what keeps joins working: two columns hashed under `patient` land on the same token, one under another domain cannot be joined to them. No default is right more often than wrong. |
+| `fake` | plausible synthetic value, requires `kind` | a name column full of nulls breaks every UI downstream and is no safer than a fake name. `kind` is a closed set, so a typo fails at startup rather than mid-topic. |
+| `generalize` | coarsen, requires `to` | the op that decides whether the replica is worth having. `date_of_birth` → `birth_year` with `cap_age: 89` keeps age cohorts and collapses the Safe Harbor tail; masking to NULL is trivially safe and useless. |
+| `date_shift` | move a timestamp, requires `anchor` | one constant offset per anchor entity. A global shift is a caesar cipher on the calendar; a per-record shift destroys every interval, which is usually the reason the data was wanted. |
+| `drop` | remove from the clean schema | not null — remove. A nulled column still says the source had one. |
+| `passthrough` | copy unchanged | written down explicitly so it was reviewed. |
+
+Three checks are load-bearing rather than tidy:
+
+- **Nothing may address the `source` block.** Replay works because each cleaned
+  record's Kafka timestamp is `source.ts_ms`, so `offsets_for_times(T)` is an
+  exact answer. A policy able to rewrite or drop it could destroy the timeline
+  while every record still looked de-identified, so the envelope is not
+  addressable at all — `source`, `op`, `ts_ms` and `transaction` all raise.
+- **A `date_shift` anchor must be a column the same table covers**, must not be
+  the column itself, and must not be another shifted column — anchoring on a
+  moving value gives a per-record offset and silently destroys intervals.
+- **A duplicate key is an error.** YAML lets a second `ssn:` win silently, which
+  is exactly the audit failure the file exists to prevent.
+
+The tests check the shipped policy against the source DDL in both directions: a
+missing rule halts a topic on the day it deploys, and a rule for a column that
+does not exist is worse — it reads like protection in review and does nothing.
+
+Two things the current policy does not do, recorded here rather than discovered
+later. `notes.body` and `appointments.intake_answers` are **dropped**, not
+scrubbed: free text has no column-level answer, and passing it through would
+make every other rule in the file decorative. And date shift protects against
+re-identification from the replica's contents, not against someone who can also
+read the clean topics — the Kafka record timestamp is the unshifted commit time,
+by design.
+
 ## Milestone status
 
 - **M1 — Cluster and chart skeleton:** ✅
-- **M2 — Source Postgres, clinic schema, mutation ledger:** ✅
+- **M2 — Source Postgres and clinic schema:** ✅
 - **M3 — Connect image and Debezium Avro source:** ✅
 - M4–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
 
@@ -182,18 +252,27 @@ via `-c config_file=`, a PVC from `volumeClaimTemplates`, a headless Service for
 stable DNS plus a ClusterIP Service for clients, and init SQL mounted at
 `/docker-entrypoint-initdb.d`.
 
-The point of the chart is these three settings:
+The point of the chart is that Debezium can attach to it and get complete change
+events, with nobody having configured the database first. Three settings and two
+SQL scripts:
 
 ```
-wal_level = logical
+wal_level = logical                          postgresql.conf
 max_replication_slots = 4
 max_wal_senders = 4
+REPLICA IDENTITY FULL on every table         11-replica-identity.sql
+CREATE PUBLICATION ... FOR ALL TABLES        12-publication.sql
 ```
 
 Debezium decodes changes through a logical replication slot. Without
 `wal_level=logical` the WAL carries no row images, slot creation fails, and there
 is no CDC — so nothing downstream exists. `wal_level` cannot be changed at
 runtime, which is why it lives in `postgresql.conf` rather than `ALTER SYSTEM`.
+
+The other two are covered under [Replication](#replication). Debezium creates its
+own slot; the chart does not. A slot created at init retains WAL from the moment
+Postgres boots and keeps retaining it until something reads it, which on a laptop
+PVC is how you fill a volume.
 
 We author this chart instead of depending on Bitnami's: Bitnami moved its free
 images to `bitnamilegacy` in 2025 and the catalog now points at a paid registry.
@@ -208,29 +287,48 @@ Because `config_file` replaces the `postgresql.conf` that `initdb` writes into
 ### Verifying
 
 `make verify` waits for rollout, prints the relevant `pg_settings`, asserts
-`SHOW wal_level` is `logical`, and then creates and drops a real `pgoutput` slot
-— the setting reading correctly is not the same as decoding working.
+`SHOW wal_level` is `logical`, checks that `dbz_publication` exists and is `FOR
+ALL TABLES`, and then runs `scripts/verify-wal.sql`.
 
-`make verify-docker` runs the same assertions against the rendered ConfigMaps
-under plain docker, no cluster needed.
+That last script is the one that matters. It creates a table nobody configured,
+opens a real slot, updates a row, and asserts the *pre-update* value shows up in
+the decoded stream. `REPLICA IDENTITY FULL` appearing in `pg_class` is not the
+same as the old row reaching the WAL, and the WAL is the only place the old row
+exists — the source keeps no audit copy of it. Under the primary-key default the stream still
+contains an update and a delete and still looks healthy — it just has no before
+image in it, and that failure is invisible to anything that only reads settings.
+
+`make verify-docker` runs every one of these assertions against the rendered
+ConfigMaps under plain docker, no cluster needed. Both paths share
+`verify-schema.sql` and `verify-wal.sql` so they cannot drift.
 
 ### Credentials
 
 Dev defaults live in `charts/pit/charts/source-pg/values.yaml`. Debezium connects
-as `debezium` (`LOGIN REPLICATION`), created by the init script. Point
+as `debezium` (`LOGIN REPLICATION SUPERUSER`), created by the init script. Point
 `auth.existingSecret` at a Secret with keys `postgres-password` and
 `replication-password` to supply real ones.
+
+Superuser is a PoC posture and the chart says so. The connector does not need it:
+the chart creates the publication, and opening a slot needs only `REPLICATION`.
+It is granted so that a connector pointed at a publication nobody created can
+still create one — `CREATE PUBLICATION ... FOR ALL TABLES` requires superuser in
+Postgres 16 — which is what keeps the database free of manual setup in every case
+rather than just the expected one. Set `auth.replicationSuperuser: false` on a
+shared cluster and the role falls back to `REPLICATION` plus `SELECT`.
 
 ### Extending
 
 `extraInitScripts` is a filename-to-content map merged into the initdb ConfigMap.
-Use a `30-` or higher prefix; the chart owns `10-` (roles) and `20-` (schema).
+Use a `30-` or higher prefix; the chart owns `10-` (role), `11-` (replica
+identity), `12-` (publication) and `20-` (schema).
 Note that initdb scripts run only on first boot of an empty volume — `make clean`
 drops the PVC when you need a rebuild.
 
 ## Clinic schema
 
-Five captured tables, all synthetic, in `public`:
+Five tables, all synthetic, in `public`. All of them replicated — see
+[Replication](#replication):
 
 | table | shape that makes it interesting |
 | --- | --- |
@@ -256,69 +354,68 @@ on `notes.appointment_id`, so deleting an appointment shows up on `notes` as an
 `decimal.handling.mode` matters for `claims`: Debezium's default encodes
 `numeric` as base64 `VariableScaleDecimal`, which compares equal to nothing.
 
-### The mutation ledger
+## Replication
 
-Every captured table has a `<table>_history` twin, written inside the same
-transaction as the change by an `AFTER INSERT OR UPDATE OR DELETE` trigger:
+Every table in the source database is replicated, in full, and a table created
+later is replicated too without anyone opting it in. Two mechanisms, one per half
+of the problem:
 
-```
-op          I, U or D
-txid        the transaction id
-tx_at       transaction_timestamp() -- the point-in-time key
-stmt_at     statement_timestamp()   -- which statement inside the transaction
-recorded_at clock_timestamp()       -- real elapsed time, for debugging
-pk          the primary key, as jsonb, so composite keys need no special case
-before_row  the whole row before, for U and D
-after_row   the whole row after, for I and U
-```
+| what | how | where |
+| --- | --- | --- |
+| a new table joins the stream | `CREATE PUBLICATION dbz_publication FOR ALL TABLES` | `12-publication.sql` |
+| a new table carries before images | an event trigger on `ddl_command_end` | `11-replica-identity.sql` |
 
-This is the correctness oracle M8 compares against, which is why it is recorded
-here rather than reconstructed from CDC events later — reconstructing it from the
-thing under test would not be an oracle. The expected state of a table at time
-`T` is one query:
+Postgres offers no setting for either. `REPLICA IDENTITY` is a per-table property
+that defaults to the primary key, and a publication either names its tables or is
+`FOR ALL TABLES`. So the default is built rather than configured.
 
-```sql
-SELECT after_row
-FROM (
-  SELECT DISTINCT ON (pk) pk, op, after_row
-  FROM patients_history
-  WHERE tx_at <= :t
-  ORDER BY pk, tx_at DESC, history_id DESC
-) s
-WHERE op <> 'D';
-```
+Why full before images. Under the primary-key default an `UPDATE` or `DELETE`
+reaches the WAL carrying only the key columns. Debezium then emits a change event
+whose `before` is empty, and nothing downstream can say what the row used to hold.
+That matters most for the de-id policy in M4, which has to decide what a column
+was, not only what it became.
 
-`tx_at` rather than a clock reading because it is identical for every row in a
-transaction, so a multi-statement transaction lands at a single point on the
-timeline and can never be half-visible to a query at `T`. `stmt_at` is how you
-order two changes to the same row inside one transaction.
+The cost is real and worth stating. `FULL` writes the whole old row to the WAL on
+every update and delete, and it makes the downstream apply compare full rows
+instead of looking up a key. For a synthetic clinic database that is cheap. On a
+large operational primary it is not, and the answer there is a unique index per
+table rather than `FULL` everywhere.
 
-`REPLICA IDENTITY FULL` is set on all five: without it an update or delete
-reaches the WAL carrying only the key columns, and there is no before image for
-the oracle to compare against.
+### Adding a table
 
-One known gap: `TRUNCATE` does not fire row-level triggers, so it is invisible to
-the ledger. Don't truncate a captured table — delete instead.
-
-### Adding a captured table
-
-Create the table with a primary key, then one call:
+Nothing. Create it:
 
 ```sql
-SELECT pit_install_capture('public.referrals');
+CREATE TABLE referrals (referral_id bigint PRIMARY KEY, patient_id bigint, reason text);
 ```
 
-That sets `REPLICA IDENTITY FULL`, builds `referrals_history`, installs the audit
-trigger with the primary-key columns as arguments, and adds `updated_at`
-maintenance if the column exists. It is idempotent, so it can be re-run against a
-live database. The history table holds two jsonb documents rather than a mirror of
-the source columns, so a later `ALTER TABLE` cannot silently stop being recorded.
-
-`pit_captured_tables` reports what is actually captured, derived from the
-installed triggers rather than from a hardcoded list:
+It comes out `REPLICA IDENTITY FULL` and already in the publication. `make psql`,
+then:
 
 ```
-make psql -- then: table pit_captured_tables;
+table pit_replicated_tables;
+select * from pg_publication_tables where pubname = 'dbz_publication';
+```
+
+`pit_replicated_tables` reads `pg_class`, so it reports what is true rather than
+what this README claims. If a table ever does slip through — restored from a dump,
+say, or created while the event trigger was dropped — `pit_replicate_all()` repairs
+every table in one idempotent call and returns how many it changed.
+
+### What M3 needs from this
+
+The connector needs no setup SQL and no table list:
+
+```
+publication.name=dbz_publication
+publication.autocreate.mode=disabled
+```
+
+It creates its own replication slot, which is why the chart does not. Confirm the
+whole path is open before writing any connector config:
+
+```
+make verify   # asserts the publication, then decodes a real stream
 ```
 
 ### Verifying the schema
@@ -329,11 +426,17 @@ make verify-docker   # no cluster; runs the same SQL
 ```
 
 Both run `scripts/verify-schema.sql`, which asserts the tables exist, that
-`pg_class.relreplident` is `f` for each captured table, that the source keeps its
-foreign keys, and that inserts, updates, cascade deletes and `SET NULL` all land
-in the ledger with the right before and after images. It works on a loaded
-database as well as an empty one: the fixtures are created inside a transaction
-that is rolled back at the end.
+`pg_class.relreplident` is `f` for every table in the database rather than for a
+list of them, that the source keeps its foreign keys, that no row-level trigger
+or history table survives, and that a table created on the spot comes out
+replicated. It works on a loaded database as well as an empty one: the fixtures
+are created inside a transaction that is rolled back at the end.
+
+The trigger and history-table assertions look redundant against a fresh install,
+and they are the ones most likely to fire. initdb scripts run only on an empty
+volume, so a database created before this change keeps its ledger through a
+`helm upgrade` and would otherwise pass every other check here. The fix is
+`make clean`, and the error message says so.
 
 ## Load generator
 

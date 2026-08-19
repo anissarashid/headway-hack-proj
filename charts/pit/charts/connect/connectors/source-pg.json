@@ -15,7 +15,7 @@
   "table.include.list": "public.patients,public.providers,public.appointments,public.claims,public.notes",
 
   "slot.name": "pit_debezium",
-  "publication.name": "pit_publication",
+  "publication.name": "dbz_publication",
   "publication.autocreate.mode": "disabled",
   "snapshot.mode": "initial",
   "tombstones.on.delete": "false",
