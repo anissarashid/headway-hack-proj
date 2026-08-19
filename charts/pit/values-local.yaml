@@ -36,11 +36,13 @@ redpanda:
       size: 20Gi
 
   # Single broker => replication factor 1 for internal + user topics.
+  # internal_topic_replication_factor is the single knob for internal topics
+  # (tx coordinator, id allocator, consumer offsets); the per-subsystem
+  # properties were removed in newer Redpanda and get rejected as unknown.
   config:
     cluster:
       default_topic_replications: 1
-      transaction_coordinator_replication: 1
-      id_allocator_replication: 1
+      internal_topic_replication_factor: 1
 
   # Console is light; keep it small next to the broker.
   console:
