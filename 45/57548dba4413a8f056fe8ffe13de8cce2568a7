@@ -1,0 +1,79 @@
+charts/pit/values.yaml
+  s_bb37ac049dbe18::t_0bc653aa44bdb0 1-40
+charts/pit/charts/pitctl/values.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-2
+.gitignore
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-13
+charts/pit/charts/sink-pg/values.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-2
+Makefile
+  s_bb37ac049dbe18::t_2247b8caebf11b 1-122
+charts/pit/charts/connect/values.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-2
+images/deid/Dockerfile
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-25
+README.md
+  s_bb37ac049dbe18::t_088cd6efe3c48b 59-64
+  s_bb37ac049dbe18::t_525246155506ae 1-58,65-263
+hack/verify.sh
+  s_bb37ac049dbe18::t_67b762bff3554b 1-50
+images/deid/entrypoint.sh
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-8
+charts/pit/charts/sink-pg/Chart.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-9
+images/pitctl/entrypoint.sh
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-8
+charts/pit/charts/deid/templates/.gitkeep
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1
+charts/pit/values-local.yaml
+  s_bb37ac049dbe18::t_8c0e2b231d176d 1-58
+charts/pit/charts/deid/values.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-2
+charts/pit/Chart.yaml
+  s_bb37ac049dbe18::t_0bc653aa44bdb0 1-24
+charts/pit/charts/connect/templates/.gitkeep
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1
+charts/pit/charts/source-pg/Chart.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-9
+charts/pit/charts/deid/Chart.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-9
+hack/forward.sh
+  s_bb37ac049dbe18::t_67b762bff3554b 1-61
+images/connect/Dockerfile
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-21
+charts/pit/charts/pitctl/Chart.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-9
+images/pitctl/Dockerfile
+  s_bb37ac049dbe18::t_d8b1fa080e6cf3 1-25
+charts/pit/charts/source-pg/values.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-2
+charts/pit/charts/pitctl/templates/.gitkeep
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1
+charts/pit/charts/source-pg/templates/.gitkeep
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1
+charts/pit/charts/connect/Chart.yaml
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1-9
+charts/pit/charts/sink-pg/templates/.gitkeep
+  s_bb37ac049dbe18::t_a8ef2b9c6c3afe 1
+charts/pit/Chart.lock
+  s_bb37ac049dbe18::t_9612ec1f77fe34 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "4557548dba4413a8f056fe8ffe13de8cce2568a7",
+  "prompts": {},
+  "sessions": {
+    "s_bb37ac049dbe18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "71495df7-2d13-4494-a0d5-d0de08aa8595",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mezie Emelle <mezie.emelle@findheadway.com>",
+      "custom_attributes": {
+        "runtime": "local"
+      }
+    }
+  }
+}
