@@ -1,5 +1,6 @@
 apiVersion: v2
 name: deid
-description: De-identification transformer (raw.* -> clean.*). Filled in at M4.
+description: De-identification transformer (raw.* -> clean.*). The only component that touches Kafka or the registry.
 type: application
 version: 0.1.0
+appVersion: "0.1.0"

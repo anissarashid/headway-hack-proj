@@ -1,0 +1,87 @@
+image:
+  repository: pit/deid
+  tag: dev
+  # The image is side-loaded into minikube with `minikube image load`, so there
+  # is nothing to pull.
+  pullPolicy: IfNotPresent
+
+# One consumer, deliberately. The cleaned topics have one partition each and the
+# applier depends on per-key order, so a second replica would join the consumer
+# group and idle rather than help. Scale partitions first if this ever needs to.
+replicaCount: 1
+
+# The broker's internal Kafka listener, and the registry that lives inside the
+# broker on :8081. Both names come from redpanda.fullnameOverride in the
+# umbrella values.yaml, not from the release name.
+kafka:
+  bootstrapServers: pit-redpanda:9093
+schemaRegistryUrl: http://pit-redpanda:8081
+
+# The consumer group. Committed offsets belong to it, so renaming it re-reads
+# every raw topic from the beginning and re-produces the whole clean history.
+consumerGroup: pit-deid
+
+policy:
+  # The policy file's contents, mounted as a ConfigMap so the policy can be
+  # edited and the Deployment restarted without rebuilding an image.
+  #
+  # Deliberately empty here. There is exactly one copy of the policy in this
+  # repo -- deid/policy/clinic.yml -- and it is supplied at install time:
+  #
+  #   helm ... --set-file deid.policy.contents=deid/policy/clinic.yml
+  #
+  # `make install`, `make lint` and `make template` all pass it. A second copy
+  # inside the chart would be a second artifact claiming to be the audited one,
+  # and the whole argument for the policy file is that there is only one.
+  contents: ""
+  mountPath: /etc/deid
+  fileName: clinic.yml
+
+# The date HIPAA's Safe Harbor age cap is measured against. Configured rather
+# than read from the clock: an op that read the clock would clean the same record
+# differently tomorrow, and a clean topic that cannot be regenerated from its raw
+# topic is not a replica of anything. Move it deliberately, or not at all.
+referenceDate: "2026-08-01"
+
+salt:
+  # Dev only, and named so it cannot be mistaken for real key material in a log,
+  # a screenshot or a code search. Every surrogate in every clean topic descends
+  # from this, so changing it changes every token ever written.
+  #
+  # A Kubernetes Secret is base64, not encryption. This is fine on a laptop with
+  # synthetic data and is not fine anywhere shared: point `existingSecret` at a
+  # Secret populated from a real secret manager instead.
+  value: "pit-dev-salt-not-for-real-data-0000"
+  existingSecret: ""
+  key: salt
+
+# The cleaned topics the transformer creates. Their cleanup.policy, retention
+# and timestamp type are NOT configurable: compaction and finite retention both
+# destroy the history point-in-time replay reads, and LogAppendTime overwrites
+# the commit time the whole model rests on. See CLEAN_TOPIC_CONFIG in runner.py.
+topics:
+  partitions: 1
+  replicationFactor: 1
+
+# How long to wait for Debezium to register the raw subjects before halting the
+# tables that have none. On a fresh install the transformer and the connector
+# start together, and the connector registers a table's subjects only when it
+# first emits for that table, so losing that race is normal.
+schemaWaitSeconds: 300
+
+# How many records to transform per poll before flushing and committing.
+batchSize: 500
+
+logLevel: INFO
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 192Mi
+  limits:
+    memory: 512Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

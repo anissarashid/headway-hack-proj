@@ -4,8 +4,15 @@ Subcharts enabled:
 {{ if index .Values "source-pg" "enabled" }}  - source-pg (Postgres {{ (index .Subcharts "source-pg").Chart.AppVersion }}, wal_level=logical, replicated in full){{ end }}
 {{- if index .Values "connect" "enabled" }}
   - connect (Debezium, raw.* topics with Avro schemas in the registry){{ end }}
+{{- if index .Values "deid" "enabled" }}
+  - deid (raw.* -> clean.*, policy {{ index .Values "deid" "policy" "mountPath" }}/{{ index .Values "deid" "policy" "fileName" }}){{ end }}
 {{- if index .Values "sink-pg" "enabled" }}
   - sink-pg (Postgres {{ (index .Subcharts "sink-pg").Chart.AppVersion }}, plain replay target){{ end }}
 
 Run `make verify` to check the source database is ready and decoding logically.
 `make verify-sink` checks the sink is up and its user is a superuser.
+{{ if index .Values "deid" "enabled" -}}
+`make deid-check` checks the cleaned topics: the schemas the registry now enforces,
+their compatibility, the topic config replay depends on, and that every cleaned
+record's Kafka timestamp is its own source.ts_ms. `make logs-deid` shows any HALT.
+{{- end }}

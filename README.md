@@ -41,6 +41,8 @@ charts/pit/                    umbrella Helm chart
     connect/                   Debezium + Avro Connect         (M3)
       connectors/source-pg.json  the Debezium connector config (registered by a hook Job)
     deid/                      de-identification transformer   (M4)
+      templates/configmap-policy.yaml  the policy, mounted at /etc/deid/clinic.yml
+      templates/secret.yaml            the HMAC salt (dev default; base64, not encryption)
     pitctl/                    pit-tail / snapshot / restore   (M5/M7)
 loadgen/                       deterministic synthetic load generator   (M2)
   src/loadgen/config.py        seed constant, counts, distributions
@@ -52,6 +54,8 @@ deid/                          de-identification transformer            (M4)
   src/deid/ops.py              what each op does to a value and to its type
   src/deid/schema.py           the clean Avro schema, derived from (raw schema, policy)
   src/deid/avro.py             the Avro type model both halves agree on
+  src/deid/envelope.py         one change event, de-identified -- key included
+  src/deid/runner.py           the only module that touches Kafka or the registry
   src/deid/vocab.py            frozen word lists `fake` draws from
 hack/
   forward.sh                   backgrounded port-forwards behind a PID file
@@ -97,6 +101,10 @@ make seed-verify # load generator acceptance check
 make churn       # five minutes of inserts, updates and deletes
 make churn-verify # the ledger replays to the live tables
 
+# the de-identification transformer runs as soon as Debezium registers a schema:
+make logs-deid   # watch it derive, register and consume; a HALT line is by design
+make deid-check  # M4 acceptance check (transform tests + in-cluster assertions)
+
 make nuke        # tear everything down, including PVCs
 ```
 
@@ -126,6 +134,7 @@ After `make forward` (leave it running in its own terminal):
 | Kafka Connect    | `pit-connect`           | 8083       | `curl localhost:8083/connectors` → `["source-pg"]` | ✅ M3       |
 | Source Postgres  | `pit-source-pg`         | 5432       | `psql -h localhost -p 5432 -U pit -d pit`       | ✅ M2          |
 | Sink Postgres    | `pit-sink-pg`           | 5433       | `psql -h localhost -p 5433 -U pit -d pit_sink`  | ✅ deployed    |
+| De-id transformer| `pit-deid` (no Service) | —          | `make logs-deid`, `make deid-verify`            | ✅ M4          |
 | Kafka broker     | `pit-redpanda`          | 9093       | in-cluster only (`pit-redpanda:9093`)           | ✅ M1          |
 | Admin API        | `pit-redpanda`          | 9644       | `curl localhost:9644/v1/status/ready`           | ✅ M1          |
 
@@ -172,10 +181,26 @@ way that does not look like its cause.
 - **`charts.redpanda.com` publishes a chart literally named `connect` — that is
   Redpanda Connect (Benthos), *not* the Kafka Connect M3 needs.** M3's Debezium
   worker is a custom image built from `images/connect/`.
-- **Cleaned topics must be created explicitly in M4** with `retention.ms=-1` and
-  `cleanup.policy=delete`. Auto-created topics inherit broker defaults, and a
-  compacted `clean.*` topic destroys the history point-in-time replay depends on
-  while looking perfectly healthy.
+- **Cleaned topics are created explicitly** with `retention.ms=-1`,
+  `cleanup.policy=delete` and `message.timestamp.type=CreateTime`. Auto-created
+  topics inherit broker defaults, and a compacted `clean.*` topic destroys the
+  history point-in-time replay depends on while looking perfectly healthy. See
+  [deid](#deid--the-transformer).
+- **`minikube image load` silently fails once a pod is running on the tag, and
+  then you are debugging code that is not deployed.** It untags the old image
+  inside the node before loading the new one, and `docker rmi` refuses while a
+  running container references it — so the load prints nothing alarming, exits 0,
+  and the next `rollout restart` starts the pod on the *old* image. `make load`
+  now runs `minikube ssh -- docker rmi -f <tag>` first, which untags without
+  touching the running container. If a change seems to have no effect, check the
+  code in the pod before you doubt the change:
+  `kubectl exec deploy/pit-deid -- grep -c something /app/src/deid/runner.py`.
+- **The umbrella does not render without the de-id policy.** The `deid` subchart
+  has no default for `policy.contents`, so every `helm template`/`lint`/`upgrade`
+  needs `--set-file deid.policy.contents=deid/policy/clinic.yml`. All the Make
+  targets and both verify scripts pass it. This is deliberate: the policy is a
+  single auditable file, and a second copy inside the chart would be a second
+  artifact claiming to be the audited one.
 
 ## De-identification policy
 
@@ -189,6 +214,8 @@ make policy-check  # validate the policy and print what it actually says
 make ops-demo      # every op, its derived type, and a worked example
 make deid-test     # unit tests; no cluster, no database
 make ops-check     # acceptance check: the two halves agree, across processes
+make schema-check  # the derived clean schemas register (needs `make forward`)
+make deid-check    # the transformer's promises, in and out of cluster
 ```
 
 Every column of every captured table appears exactly once, including the ones
@@ -294,12 +321,167 @@ re-identification from the replica's contents, not against someone who can also
 read the clean topics — the Kafka record timestamp is the unshifted commit time,
 by design.
 
+## deid — the transformer
+
+`deid/src/deid/runner.py` is the only module in the project that opens a socket.
+Everything above it — the policy, the ops, the schema derivation, the envelope
+transform — is a pure function of its arguments, and that is not an accident of
+how the code grew: it is maintained by keeping every edge in one file. It is also
+why `make deid-test` needs no broker and no database, and why the only things
+`make deid-check` has to prove against a cluster are the things that genuinely
+live at an edge.
+
+`deid/src/deid/envelope.py` is the piece between them: one Debezium change event
+in, one cleaned key, value and timestamp out.
+
+### Startup: schemas first, records second
+
+The order is the design. Per captured table, before a single record is consumed:
+
+1. Fetch the latest raw key and value schemas Debezium registered.
+2. Derive the clean schemas from `(raw schema, policy)`.
+3. Create the cleaned topic with `retention.ms=-1` and `cleanup.policy=delete`.
+4. Register the clean key and value schemas; set both clean subjects to
+   `BACKWARD`.
+5. Only then subscribe.
+
+That order is what makes "the registry enforces the policy" true rather than
+aspirational: at the instant the first record is read, the clean subject already
+exists and already describes exactly the columns the policy allows. A transformer
+that registered on its first record would spend its first moments in a state
+where the enforcement had not happened yet.
+
+`BACKWARD` is what lets a policy-approved column be added later — a nullable
+field with a default can be appended and old readers keep working — and what
+makes an *unapproved* change loud, because retyping a column consumers read is
+rejected at registration instead of quietly written.
+
+### The three runtime details that fail silently
+
+**`produce(..., timestamp=source.ts_ms)`.** One keyword argument, and the whole
+point-in-time model rests on it: the cleaned record's Kafka timestamp is the
+database commit time, so `offsets_for_times(T)` resolves "the database as of T"
+to an exact offset per partition. Get it wrong and nothing complains —
+librdkafka stamps wall-clock time, the topic looks healthy, and every
+point-in-time query returns the present. So the cleaned topics are also created
+with `message.timestamp.type=CreateTime`: under `LogAppendTime` the broker
+overwrites what the producer sent and nothing downstream can tell.
+
+`make deid-check` asserts this against records the transformer actually wrote —
+every sampled record's Kafka timestamp equals its own `source.ts_ms`, the broker
+reports it as a CreateTime rather than its own, and `offsets_for_times(T)` lands
+on the first record at or after T with the record before it strictly earlier.
+That is the mechanism M6's `pit restore --at T` will be built on, measured rather
+than assumed.
+
+**`retention.ms=-1` and `cleanup.policy=delete`.** Compaction keeps the latest
+value per key and discards the history, which is precisely what replay reads. A
+compacted cleaned topic answers every query, plausibly, and wrongly. So the
+topics are created explicitly instead of auto-created from broker defaults, and
+an existing topic whose config disagrees is corrected loudly — with the caveat
+that a topic which *was* compacted has already lost history no config change
+brings back.
+
+**The key is de-identified by the value, not alongside it.** Debezium writes the
+primary key as the message key, in its own subject and its own Avro record, and
+M5's applier upserts on it. A key still holding `patient_id = 4711` next to a row
+image holding a token is one duplicate row per change event, forever, in a sink
+that reports no error. So `TableTransformer.clean` assembles the key out of the
+row image it has just cleaned — agreement is a property of the code's shape
+rather than of two computations kept in step — and takes it from `after`, or from
+`before` for a delete, because that is the row the key identifies.
+
+That is also why a key column may only be `passthrough` or `hmac`. Both are
+injective; every other op is many-to-one, and a many-to-one key does not leak, it
+*merges*: `redact` on `patient_id` maps every patient onto one token and the
+applier collapses the whole table into one row. A nullable derived key type is
+refused for the same reason, and an uncovered key column halts the topic whatever
+`on_uncovered_column` says — `drop_column` cannot apply to a primary key.
+
+### Halting is per topic, and happens at runtime too
+
+`ALTER TABLE patients ADD COLUMN insurance_id text` on a running system makes
+Debezium register a new raw schema and emit records carrying a column the policy
+has never seen. The transform refuses such a record, the runner re-derives from
+the record's own writer schema, and if the new column has no rule that topic
+halts: its partitions are paused, its offsets are not committed, every other
+topic is untouched.
+
+```
+HALT public.patients: UncoveredColumnError: clinic.yml: public.patients.insurance_id:
+1 column(s) in the raw schema have no rule: insurance_id. ...
+    clean.public.patients stops here; every other topic keeps flowing. Nothing is
+    committed for it, so fixing clinic.yml and restarting resumes from this record.
+```
+
+`make deid-uncover` does exactly that and shows the other four topics still
+advancing while `clean.public.patients` sits frozen; adding the rule to
+`deid/policy/clinic.yml` and re-running `make install` clears it, and the topic
+resumes from the record that stopped it rather than past it. The clean subject
+gains a version, which is what `BACKWARD` was for.
+
+**Order matters, and the failure is loud in the other direction too.** Add the
+rule *before* the DDL and the topic halts on a different complaint — a rule for a
+column the table does not have reads as protection and protects nothing. In
+practice the ALTER lands first, so by the time anything halts, Debezium has
+already registered the schema that carries the column and a restart derives
+against it.
+
+One thing to know about the reverse case: **Debezium does not promptly
+re-register after a `DROP COLUMN`.** It keeps its cached table schema and goes on
+emitting the dropped column as null, so a topic halted on that column stays
+halted through a connector restart. `make clean && make up` is the reliable reset.
+
+### The chart
+
+```
+make deid-dry-run  # in-cluster: derive, create topics, register, print, stop
+make deid-verify   # the cleaned topics vs. what the design promises
+make deid-check    # the M4 acceptance check: the tests, then the above
+make deid-uncover  # add an uncovered column; watch one topic halt
+make logs-deid
+```
+
+`make deid-*` runs inside the transformer's own pod, because the broker's Kafka
+API is deliberately not port-forwarded and that is where the policy is mounted
+and the salt already is.
+
+**The policy is mounted, not baked in.** A ConfigMap at `/etc/deid/clinic.yml`,
+so the auditable artifact can be reviewed and changed without rebuilding an
+image. It has no default in the chart: there is exactly one copy of the policy in
+this repo and it is supplied at install time with
+`--set-file deid.policy.contents=deid/policy/clinic.yml`, which `make install`,
+`make lint` and `make template` all pass. Rendering without it fails with a
+sentence saying so — better than deploying a policy that covers no tables and
+halting every topic several minutes later. The Deployment carries a checksum of
+the policy, so `helm upgrade` rolls the pod when it changes; the runner parses it
+once at startup, so editing the ConfigMap in place does nothing until a restart.
+
+**The salt comes from a Secret as `DEID_SALT`, and a Secret is base64, not
+encryption.** Fine here, where the data is synthetic. Anywhere shared, set
+`deid.salt.existingSecret` and populate it from a real secret manager. Every
+surrogate in every clean topic descends from this value, so rotating it rewrites
+every token in every topic.
+
+Two settings have no default in the code at all, for the same reason `Keys` takes
+them by injection: a salt with a default is a configuration that de-identifies
+with a guessable key, and a reference date read from the clock would make the
+HIPAA age cap answer differently tomorrow — so replaying a raw topic would
+produce different clean records and the offset manifest would point at something
+that had moved. Both are set by the chart; without them the pod refuses to start
+and says why.
+
+The image builds from the repo root (`docker build -f images/deid/Dockerfile .`)
+because it needs the `deid` package and Docker cannot `COPY` above its context.
+The policy is deliberately not in it.
+
 ## Milestone status
 
 - **M1 — Cluster and chart skeleton:** ✅
 - **M2 — Source Postgres and clinic schema:** ✅
 - **M3 — Connect image and Debezium Avro source:** ✅
-- M4–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
+- **M4 — De-identification transformer:** ✅
+- M5–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
 
 ## source-pg
 

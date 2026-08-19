@@ -32,12 +32,21 @@ SINK_PGDATABASE ?= pit_sink
 # Local port `forward` maps source-pg onto; the loadgen DSN defaults here too.
 LOCAL_PORT ?= 5432
 
+# The de-id policy is a single file in this repo and the deid subchart has no
+# default for it: `--set-file` supplies it to every helm invocation that renders
+# the umbrella. A second copy inside the chart would be a second artifact
+# claiming to be the audited one. Rendering without this fails with a message.
+POLICY      ?= deid/policy/clinic.yml
+POLICY_FLAG := --set-file deid.policy.contents=$(POLICY)
+
 KUBECTL := kubectl --context $(PROFILE) -n $(NAMESPACE)
 HELM    := helm
 UV      := uv run
 
-# component -> docker build context. Dockerfiles arrive in later milestones
+# component -> where its Dockerfile lives. Dockerfiles arrive in later milestones
 # (connect=M3, deid=M4, pitctl=M5); build steps skip cleanly until then.
+# deid builds with the repo root as its context (it needs the `deid` package, and
+# Docker cannot COPY above the context); see .dockerignore.
 CONNECT_CTX := images/connect
 DEID_CTX    := images/deid
 PITCTL_CTX  := images/pitctl
@@ -76,12 +85,12 @@ deps: repos ## Fetch chart dependencies (Redpanda + the in-tree subcharts)
 
 .PHONY: lint
 lint: deps ## helm lint the umbrella chart
-	$(HELM) lint $(CHART) -f $(CHART)/values-local.yaml
+	$(HELM) lint $(CHART) -f $(CHART)/values-local.yaml $(POLICY_FLAG)
 
 .PHONY: install
 install: deps namespace ## Install/upgrade the pit umbrella chart and wait for readiness
 	$(HELM) upgrade --install $(RELEASE) $(CHART) -n $(NAMESPACE) --create-namespace \
-	  -f $(CHART)/values-local.yaml \
+	  -f $(CHART)/values-local.yaml $(POLICY_FLAG) \
 	  --wait --timeout 10m
 
 .PHONY: up
@@ -194,7 +203,7 @@ build-connect:
 	else echo "skip connect image: $(CONNECT_CTX)/Dockerfile not present yet (M3)"; fi
 build-deid:
 	@if [ -f $(DEID_CTX)/Dockerfile ]; then \
-	  docker build -t $(IMG_PREFIX)/deid:$(TAG) $(DEID_CTX); \
+	  docker build -f $(DEID_CTX)/Dockerfile -t $(IMG_PREFIX)/deid:$(TAG) .; \
 	else echo "skip deid image: $(DEID_CTX)/Dockerfile not present yet (M4)"; fi
 build-pitctl:
 	@if [ -f $(PITCTL_CTX)/Dockerfile ]; then \
@@ -206,9 +215,18 @@ load: ## Load built images into the minikube profile
 	@for img in connect deid pitctl; do \
 	  if docker image inspect $(IMG_PREFIX)/$$img:$(TAG) >/dev/null 2>&1; then \
 	    echo "loading $(IMG_PREFIX)/$$img:$(TAG)"; \
+	    minikube -p $(PROFILE) ssh -- docker rmi -f $(IMG_PREFIX)/$$img:$(TAG) >/dev/null 2>&1 || true; \
 	    minikube image load -p $(PROFILE) $(IMG_PREFIX)/$$img:$(TAG); \
 	  else echo "skip $$img: image $(IMG_PREFIX)/$$img:$(TAG) not built yet"; fi; \
 	done
+# The `docker rmi -f` above is load-bearing, and its absence fails in the worst
+# available way. `minikube image load` untags the old image inside the node
+# before loading the new one, and `docker rmi` refuses while a running container
+# references it -- so as soon as a pod is up on :dev, every subsequent load
+# fails, prints nothing alarming, and the next `rollout restart` starts the pod
+# on the *old* code. `rmi -f` untags without touching the running container,
+# which is enough. Untagging an image nothing is using is harmless, and `|| true`
+# covers a profile that is not running yet.
 
 .PHONY: reload
 reload: build load install ## Rebuild images, load them, and roll the affected deployments
@@ -255,7 +273,7 @@ seed-test: ## Unit tests for the generator; no database required
 # ---- de-identification policy ----------------------------------------------
 # The policy file is the auditable artifact: `policy-check` parses it and prints
 # what it actually says, so reviewing a change is reading rules rather than YAML.
-POLICY ?= deid/policy/clinic.yml
+# POLICY itself is defined at the top, next to the --set-file flag that installs it.
 
 .PHONY: deid-deps
 deid-deps: ## Create the deid venv and install pinned dependencies
@@ -308,6 +326,77 @@ schema-check: ## DATA-711 acceptance check: derived clean schemas register (need
 	echo "==> registering the derived schemas against the live registry"; \
 	uv run --with fastavro --with requests --with PyYAML \
 	  python scripts/register-clean-schema.py --registry $(REGISTRY_URL) --policy $(POLICY)
+
+# ---- the de-id transformer -------------------------------------------------
+# The transformer is the only component that touches Kafka or the registry, and
+# the broker's Kafka API is deliberately not port-forwarded (clients run in the
+# cluster and address pit-redpanda:9093). So these targets run inside the
+# transformer's own pod, which is where the policy is mounted and the salt is.
+DEID_DEPLOY ?= $(RELEASE)-deid
+
+.PHONY: deid-dry-run
+deid-dry-run: ## Startup only, in-cluster: derive the clean schemas, create the topics, register
+	$(KUBECTL) exec deploy/$(DEID_DEPLOY) -- /app/entrypoint.sh --dry-run
+
+.PHONY: deid-verify
+deid-verify: ## Check the cleaned topics: schemas, compatibility, topic config, timestamps
+	$(KUBECTL) exec deploy/$(DEID_DEPLOY) -- /app/entrypoint.sh --verify
+
+.PHONY: deid-check
+deid-check: ## DATA-712 acceptance check: the transformer's promises, in and out of cluster
+	@set -euo pipefail; \
+	echo "==> transform tests: the key agrees with the value, the timestamp is the commit time"; \
+	cd deid && $(UV) pytest tests/test_envelope.py tests/test_runner.py; cd ..; \
+	echo "==> waiting for $(DEID_DEPLOY)"; \
+	$(KUBECTL) rollout status deploy/$(DEID_DEPLOY) --timeout=5m; \
+	echo "==> any halted topics? (a HALT is the design working, and it is still news)"; \
+	$(KUBECTL) logs deploy/$(DEID_DEPLOY) --tail=2000 | grep -E '^.*(HALT|HALTED)' || echo "    none"; \
+	echo "==> in-cluster acceptance checks against the live broker and registry"; \
+	$(KUBECTL) exec deploy/$(DEID_DEPLOY) -- /app/entrypoint.sh --verify
+
+# The one criterion that needs the source database changed under a running
+# transformer. Adds a column with no policy rule, waits for the halt, and shows
+# that the other tables kept flowing. `make deid-uncover-fix` puts it back.
+UNCOVERED_COLUMN ?= insurance_id
+
+.PHONY: deid-uncover
+deid-uncover: ## Add an uncovered column to patients: one topic halts, the rest keep flowing
+	@set -euo pipefail; \
+	echo "==> ALTER TABLE patients ADD COLUMN $(UNCOVERED_COLUMN) text"; \
+	$(KUBECTL) exec sts/$(STS) -- psql -U $(PGUSER) -d $(PGDATABASE) -q -c \
+	  'ALTER TABLE patients ADD COLUMN IF NOT EXISTS $(UNCOVERED_COLUMN) text;'; \
+	echo "==> touching a row so Debezium registers the new schema and emits it"; \
+	$(KUBECTL) exec sts/$(STS) -- psql -U $(PGUSER) -d $(PGDATABASE) -q -c \
+	  "update patients set $(UNCOVERED_COLUMN) = 'AETNA-99' where patient_id = (select min(patient_id) from patients);" \
+	  -c "update providers set specialty = specialty where provider_id = (select min(provider_id) from providers);"; \
+	echo "==> waiting for the halt (up to 60s)"; \
+	for i in $$(seq 1 30); do \
+	  if $(KUBECTL) logs deploy/$(DEID_DEPLOY) --tail=500 | grep -q 'HALT public.patients'; then break; fi; \
+	  sleep 2; \
+	done; \
+	$(KUBECTL) logs deploy/$(DEID_DEPLOY) --tail=500 | grep -A2 'HALT public.patients' || \
+	  { echo "FAIL: patients did not halt"; exit 1; }; \
+	echo; \
+	echo "==> high watermarks: patients is frozen, the rest keep moving"; \
+	for t in patients providers appointments claims notes; do \
+	  printf '    %-28s %s\n' "clean.public.$$t" \
+	    "$$($(KUBECTL) exec sts/$(RELEASE)-redpanda -c redpanda -- \
+	       rpk topic describe -p clean.public.$$t 2>/dev/null | tail -1 | awk '{print $$NF}')"; \
+	done; \
+	echo "PASS: one topic halted by name; add $(UNCOVERED_COLUMN) to $(POLICY) and 'make install' to clear it"
+
+# Dropping the column is NOT enough to clear the halt, and that is Debezium's
+# doing rather than the transformer's: it keeps its cached table schema after a
+# DROP COLUMN and goes on emitting the column as null, so the raw subject still
+# carries it and the derivation still refuses. `make clean && make up` is the
+# reliable reset. Kept because dropping the column is still the right first step.
+.PHONY: deid-uncover-fix
+deid-uncover-fix: ## Drop the column deid-uncover added (see the note: `make clean && make up` to fully reset)
+	$(KUBECTL) exec sts/$(STS) -- psql -U $(PGUSER) -d $(PGDATABASE) -q -c \
+	  'ALTER TABLE patients DROP COLUMN IF EXISTS $(UNCOVERED_COLUMN);'
+	$(KUBECTL) rollout restart deploy/$(DEID_DEPLOY)
+	@echo "Note: Debezium does not re-register after a DROP COLUMN, so public.patients"
+	@echo "may stay halted on it. 'make clean && make up' resets the pipeline."
 
 # ---- churn -----------------------------------------------------------------
 # The seed gives one state; churn gives a timeline with distinguishable points in
@@ -381,4 +470,4 @@ test: ## Run Python unit tests (uv run pytest)
 
 .PHONY: template
 template: deps ## Render the chart locally (no cluster needed)
-	$(HELM) template $(RELEASE) $(CHART) -f $(CHART)/values-local.yaml -n $(NAMESPACE)
+	$(HELM) template $(RELEASE) $(CHART) -f $(CHART)/values-local.yaml $(POLICY_FLAG) -n $(NAMESPACE)

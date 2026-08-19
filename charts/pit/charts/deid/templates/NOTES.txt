@@ -1,0 +1,37 @@
+The de-identification transformer is deployed as {{ include "deid.fullname" . }}.
+
+It reads Debezium's raw.* topics, applies {{ include "deid.policyPath" . }}, and
+writes clean.* topics whose Kafka timestamps are the database commit time.
+
+Watch it start. The order is the design -- schemas first, records second:
+
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/name={{ include "deid.name" . }} -f
+
+A HALT line is the design working, not a crash. A source column with no policy
+rule stops that one topic and leaves the others flowing:
+
+  kubectl -n {{ .Release.Namespace }} logs -l app.kubernetes.io/name={{ include "deid.name" . }} | grep HALT
+
+Check what the registry now enforces (needs `make forward`):
+
+  curl -s localhost:8081/subjects | tr ',' '\n' | grep clean
+  curl -s localhost:8081/subjects/clean.public.patients-value/versions/latest | jq -r .schema | jq
+  curl -s localhost:8081/config/clean.public.patients-value        # -> BACKWARD
+
+And that the cleaned topics can still be replayed. Compaction or finite retention
+would leave a topic that answers every point-in-time query plausibly and wrongly:
+
+  kubectl -n {{ .Release.Namespace }} exec -it sts/pit-redpanda -c redpanda -- \
+    rpk topic describe clean.public.patients -c
+
+To change the policy, edit deid/policy/clinic.yml and re-run `make install`: the
+Deployment carries a checksum of the policy, so the pod rolls. The policy is
+parsed once at startup, so editing the ConfigMap in place does nothing until the
+pod restarts.
+
+{{ if not .Values.salt.existingSecret -}}
+NOTE: the HMAC salt comes from a Secret this chart renders from
+deid.salt.value, which is a dev default. A Secret is base64, not encryption.
+Anywhere shared, set deid.salt.existingSecret to a Secret populated from a real
+secret manager.
+{{- end }}

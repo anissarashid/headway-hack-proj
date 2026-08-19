@@ -49,6 +49,7 @@ helm dependency build "$CHART" >/dev/null
 # deploys, rather than Redpanda's three-broker TLS defaults.
 render() {
   helm template verify "$CHART" -f "$CHART/values-local.yaml" \
+    --set-file deid.policy.contents=deid/policy/clinic.yml \
     --show-only "charts/source-pg/templates/$1"
 }
 

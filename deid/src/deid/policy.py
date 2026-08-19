@@ -63,7 +63,10 @@ RESERVED_FIELDS = frozenset({"source", "op", "ts_ms", "transaction"})
 # the envelope or a jsonb document, and neither is supported yet.
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
-DEFAULT_POLICY_PATH = "/app/policy/clinic.yml"
+# Where the deid chart mounts the policy ConfigMap. It is a mount rather than a
+# baked-in file so the policy can be edited and the Deployment restarted without
+# rebuilding an image -- the artifact is reviewable and deployable on its own.
+DEFAULT_POLICY_PATH = "/etc/deid/clinic.yml"
 
 
 # ---------------------------------------------------------------------------

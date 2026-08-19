@@ -319,7 +319,7 @@ def _default_for(clean_type: AvroType, raw_default: Any) -> Any:
     return raw_default if avro.conforms(raw_default, clean_type) else _MISSING
 
 
-def _clean_field(field: Mapping[str, Any], clean_type: AvroType) -> dict[str, Any]:
+def clean_field(field: Mapping[str, Any], clean_type: AvroType) -> dict[str, Any]:
     """The derived field: the raw one with its type, and only its type, replaced.
 
     ``doc``, ``aliases`` and the connector's own properties are carried over
@@ -341,7 +341,7 @@ def _clean_field(field: Mapping[str, Any], clean_type: AvroType) -> dict[str, An
     return clean
 
 
-def _renamed(named: Mapping[str, Any], namespace: str, enclosing: str | None) -> dict[str, Any]:
+def renamed(named: Mapping[str, Any], namespace: str, enclosing: str | None) -> dict[str, Any]:
     """``named``, moved into ``namespace``.
 
     The clean topic is ``clean.public.patients`` and the raw one is
@@ -422,9 +422,9 @@ def _derive_row_image(
         clean_type = ops.build(rule, raw_type, keys=keys).derive_type(raw_type)
         if clean_type is ops.DROPPED:
             continue
-        clean_fields.append(_clean_field(field, clean_type))
+        clean_fields.append(clean_field(field, clean_type))
 
-    clean_record = _renamed(raw_record, namespace, enclosing) if namespace else dict(raw_record)
+    clean_record = renamed(raw_record, namespace, enclosing) if namespace else dict(raw_record)
     clean_record["fields"] = clean_fields
     return clean_record
 
@@ -555,7 +555,7 @@ def derive_clean_schema(
             {**field, "type": _replace_branch(field["type"], is_row_image, replacement)}
         )
 
-    clean_envelope = _renamed(envelope, namespace, None) if namespace else dict(envelope)
+    clean_envelope = renamed(envelope, namespace, None) if namespace else dict(envelope)
     clean_envelope["fields"] = clean_fields
 
     # Nothing above aliases the input once this copy is taken, so a caller
@@ -680,6 +680,18 @@ DEMO_RAW_VALUE_SCHEMA: Mapping[str, Any] = {
         },
     ],
     "connect.name": f"{_RAW_TOPIC}.Envelope",
+}
+
+# The key schema Debezium registers alongside it: a flat record of the primary
+# key columns, and nothing else. It is a separate subject and a separate Avro
+# record from the value, which is why de-identifying one and not the other is a
+# mistake that is possible at all -- see :mod:`deid.envelope`.
+DEMO_RAW_KEY_SCHEMA: Mapping[str, Any] = {
+    "type": "record",
+    "name": "Key",
+    "namespace": _RAW_TOPIC,
+    "fields": [{"name": "patient_id", "type": "long"}],
+    "connect.name": f"{_RAW_TOPIC}.Key",
 }
 
 DEMO_TABLE = "public.patients"

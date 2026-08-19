@@ -1,0 +1,23 @@
+{{- /*
+The de-identification policy, mounted rather than baked into the image.
+
+The policy file is the auditable artifact: when someone asks what was done to
+`ssn`, the answer is a line in a file under version control. Mounting it keeps
+that true operationally as well as in the repo -- the file that is running is a
+ConfigMap anyone can read, and changing it is `helm upgrade` plus a restart
+rather than an image build.
+
+The Deployment carries a checksum of this ConfigMap, so an upgrade that changes
+the policy rolls the pod. Editing the ConfigMap in place with `kubectl edit`
+does not: kubelet updates the mounted file within a minute or so, but the runner
+parses the policy once at startup, on purpose. Restart it.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "deid.fullname" . }}-policy
+  labels:
+    {{- include "deid.labels" . | nindent 4 }}
+data:
+  {{ .Values.policy.fileName }}: |-
+    {{- include "deid.policyContents" . | nindent 4 }}

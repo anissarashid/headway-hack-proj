@@ -10,7 +10,10 @@ requires-python = ">=3.11"
 # hashlib, and word lists in the repo rather than a faker whose next release
 # would change every surrogate already written to a clean topic.
 dependencies = [
+  "confluent-kafka>=2.6,<3",
+  "fastavro>=1.9,<2",
   "PyYAML>=6.0,<7",
+  "requests>=2.32,<3",
 ]
 
 # hypothesis is test-only: the conformance property ("every op, every value,

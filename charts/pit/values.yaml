@@ -42,10 +42,21 @@ connect:
 sink-pg:
   enabled: true
 
+# The de-identification transformer (M4): raw.* -> clean.*, and the only
+# component that touches Kafka or the registry. Needs the locally-built
+# pit/deid:dev image loaded into the cluster — `make up` builds and loads it.
+#
+# `policy.contents` has no default and is supplied at install time from the one
+# copy of the policy in this repo:
+#     --set-file deid.policy.contents=deid/policy/clinic.yml
+# `make install`, `make lint` and `make template` all pass it. Rendering without
+# it fails with a message saying so, rather than deploying a policy that covers
+# no tables and halts every topic several minutes later.
+deid:
+  enabled: true
+
 # Subcharts filled in by later milestones. Off until their milestone lands, so a
 # stray template cannot deploy before the milestone that owns it.
 # Each block is still present so environment overrides have a stable path.
-deid:
-  enabled: false
 pitctl:
   enabled: false
