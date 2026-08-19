@@ -1,0 +1,60 @@
+charts/pit/charts/connect/templates/job-register.yaml
+  s_925a65c6deab5d::t_2b708dfecec2f0 1-66
+images/connect/Dockerfile
+  s_925a65c6deab5d::t_c59ab1ec70b786 1-22
+charts/pit/charts/connect/templates/configmap-connectors.yaml
+  s_925a65c6deab5d::t_66ffb09b2b3fdc 1-13
+images/connect/pom.xml
+  s_925a65c6deab5d::t_bab33ad45cce5b 1-38
+spikes/data-703-debezium-avro-registry/spike.py
+  s_925a65c6deab5d::t_3b108120a52ffa 157-162,169-170,183-184
+  s_925a65c6deab5d::t_8da357bbbae00a 188-192,198
+  s_925a65c6deab5d::t_9aba22b25a8279 271-278
+  s_925a65c6deab5d::t_2d0c1ef826d96e 1-156,163-168,171-182,185-187,193-197,199-270,279-286
+spikes/data-703-debezium-avro-registry/FINDINGS.md
+  s_925a65c6deab5d::t_d6133b14f63112 1-45
+charts/pit/charts/connect/templates/_helpers.tpl
+  s_925a65c6deab5d::t_e4935f870527ce 1-28
+charts/pit/charts/connect/connectors/source-pg.json
+  s_925a65c6deab5d::t_dfbbebad03c0e6 1-18,20-38
+  s_925a65c6deab5d::t_70161bf762b81e 19
+charts/pit/values.yaml
+  s_925a65c6deab5d::t_e2038ca65e5c29 31-42
+  s_925a65c6deab5d::t_9c38b7c8944f10 44-48
+  s_925a65c6deab5d::t_0b21ad55644726 43
+charts/pit/charts/connect/Chart.yaml
+  s_925a65c6deab5d::t_017ba7ed58049a 3-7,10
+charts/pit/charts/connect/templates/configmap-cdc-window.yaml
+  s_925a65c6deab5d::t_5b17f2453435aa 1-35
+README.md
+  s_925a65c6deab5d::t_29f05dc6da1d79 100-101
+  s_925a65c6deab5d::t_f9173a53715e9f 114-115
+  s_925a65c6deab5d::t_64159ad536c141 309-380
+  s_925a65c6deab5d::t_1d4f05c4d6b09d 42,45-46,53-54
+charts/pit/charts/connect/templates/service.yaml
+  s_925a65c6deab5d::t_fcbc3638509973 1-15
+charts/pit/charts/connect/templates/deployment.yaml
+  s_925a65c6deab5d::t_9c58c5700d0abc 1-84
+charts/pit/charts/connect/values.yaml
+  s_925a65c6deab5d::t_52b1fc627acdfb 1-50
+Makefile
+  s_925a65c6deab5d::t_a0e8eb7b515dd4 37
+  s_925a65c6deab5d::t_d54bbabd9a9310 82
+  s_925a65c6deab5d::t_f205d53cb7b02e 32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "e5900968b6e4ef9af397f049a316dde845b3b2f9",
+  "prompts": {},
+  "sessions": {
+    "s_925a65c6deab5d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b462c9c-d701-4d69-9e99-a9abb6f45cdc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Darren Liu <dliu9999@gmail.com>"
+    }
+  }
+}
