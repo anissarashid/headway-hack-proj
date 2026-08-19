@@ -39,7 +39,17 @@ block_keys() {
   awk '/^  [A-Za-z0-9._-]+: \|/ { sub(/: \|.*/, ""); sub(/^  /, ""); print }'
 }
 
-render() { helm template verify "$CHART" --show-only "charts/source-pg/templates/$1"; }
+# The umbrella depends on Redpanda, so a bare `helm template` fails until the
+# dependency archives exist. Fetch them first; the repo add is idempotent.
+helm repo add redpanda https://charts.redpanda.com --force-update >/dev/null
+helm dependency build "$CHART" >/dev/null
+
+# values-local.yaml so this renders the same single-broker shape `make install`
+# deploys, rather than Redpanda's three-broker TLS defaults.
+render() {
+  helm template verify "$CHART" -f "$CHART/values-local.yaml" \
+    --show-only "charts/source-pg/templates/$1"
+}
 
 CONF_YAML=$(render configmap-postgresql-conf.yaml)
 INITDB_YAML=$(render configmap-initdb.yaml)

@@ -1,0 +1,21 @@
+dependencies:
+- name: redpanda
+  repository: https://charts.redpanda.com
+  version: 26.2.2
+- name: source-pg
+  repository: file://charts/source-pg
+  version: 0.1.0
+- name: connect
+  repository: file://charts/connect
+  version: 0.1.0
+- name: deid
+  repository: file://charts/deid
+  version: 0.1.0
+- name: sink-pg
+  repository: file://charts/sink-pg
+  version: 0.1.0
+- name: pitctl
+  repository: file://charts/pitctl
+  version: 0.1.0
+digest: sha256:442ba99787efbd84e8cca6878f70aa54f5feb44916e2f42eab58a1467db91e3e
+generated: "2026-08-19T12:58:34.255146-04:00"

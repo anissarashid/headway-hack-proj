@@ -1,5 +1,42 @@
-# Umbrella values for the `pit` chart.
+# Umbrella defaults — invariants that hold in every environment.
+# Laptop sizing (single broker, TLS off, small resources) lives in
+# values-local.yaml and is layered on top with `-f values-local.yaml`.
 # Per-subchart overrides live under the subchart's name.
 
+redpanda:
+  # Stable in-cluster hostnames. M3's Debezium connector and the deid/applier
+  # services address the broker + registry as `pit-redpanda:{9093,8081}`, so
+  # pin the name rather than let it derive from the release name.
+  fullnameOverride: pit-redpanda
+
+  # Schema registry is built into the broker on :8081 (not a separate service).
+  # This is the contract the whole project rests on, so assert it explicitly
+  # even though the chart default already enables it.
+  listeners:
+    schemaRegistry:
+      enabled: true
+      port: 8081
+
+  # Redpanda Console. The chart auto-wires its config to this broker's Kafka,
+  # schema-registry and admin APIs when enabled. Serves on :8080.
+  console:
+    enabled: true
+    fullnameOverride: pit-console
+
+# The CDC source. Its own defaults live in charts/source-pg/values.yaml; only
+# the dependency gate belongs here. Read by the umbrella NOTES.txt, so this key
+# must exist even when disabled.
 source-pg:
   enabled: true
+
+# Subcharts filled in by later milestones. Off until their milestone lands, so a
+# stray template cannot deploy before the milestone that owns it.
+# Each block is still present so environment overrides have a stable path.
+connect:
+  enabled: false
+deid:
+  enabled: false
+sink-pg:
+  enabled: false
+pitctl:
+  enabled: false

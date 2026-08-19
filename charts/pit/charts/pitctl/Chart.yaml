@@ -1,0 +1,5 @@
+apiVersion: v2
+name: pitctl
+description: pit-tail Deployment, snapshot CronJob and restore Jobs. Filled in at M5/M7.
+type: application
+version: 0.1.0

@@ -6,7 +6,34 @@ version: 0.1.0
 appVersion: "0.1.0"
 
 dependencies:
+  # The official Redpanda chart brings the broker StatefulSet, schema registry
+  # listener and PVCs in a production shape. Local overrides live in
+  # values-local.yaml. Pinned so `helm dependency build` is reproducible.
+  - name: redpanda
+    version: "26.2.2"
+    repository: https://charts.redpanda.com
+
+  # The in-tree subcharts. Helm would load these from charts/ without an entry
+  # here, but `helm lint` fails on any subchart the metadata does not declare,
+  # and `condition` only works through a dependency entry. Milestones flip their
+  # own subchart on in values.yaml as they land.
   - name: source-pg
     version: 0.1.0
     repository: "file://charts/source-pg"
     condition: source-pg.enabled
+  - name: connect
+    version: 0.1.0
+    repository: "file://charts/connect"
+    condition: connect.enabled
+  - name: deid
+    version: 0.1.0
+    repository: "file://charts/deid"
+    condition: deid.enabled
+  - name: sink-pg
+    version: 0.1.0
+    repository: "file://charts/sink-pg"
+    condition: sink-pg.enabled
+  - name: pitctl
+    version: 0.1.0
+    repository: "file://charts/pitctl"
+    condition: pitctl.enabled

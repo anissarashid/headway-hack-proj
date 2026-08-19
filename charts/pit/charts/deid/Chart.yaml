@@ -1,0 +1,5 @@
+apiVersion: v2
+name: deid
+description: De-identification transformer (raw.* -> clean.*). Filled in at M4.
+type: application
+version: 0.1.0
