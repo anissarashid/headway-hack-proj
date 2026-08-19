@@ -1,0 +1,31 @@
+Makefile
+  s_f7b00ed95a1753::t_2fe83bdac62655 205-231
+README.md
+  s_f7b00ed95a1753::t_ad9468e128ca49 47,84-87,366-408
+loadgen/README.md
+  s_f7b00ed95a1753::t_1184aa409b66dd 12,15,18-22,29-32,42-46,51-52,157-269,278-292
+loadgen/pyproject.toml
+  s_f7b00ed95a1753::t_a74b671a431b05 18
+loadgen/src/loadgen/__init__.py
+  s_f7b00ed95a1753::t_1b17ed5c779fb6 3-5
+loadgen/src/loadgen/__main__.py
+  s_f7b00ed95a1753::t_45b2666be20fdd 1-1338
+loadgen/tests/test_churn.py
+  s_f7b00ed95a1753::t_c61554e994e2f6 1-353
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "e3a993831e616e7e3c210c4c93342601ed9ac42b",
+  "prompts": {},
+  "sessions": {
+    "s_f7b00ed95a1753": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d56954e5-1d7f-4869-8f3a-0442913ba80c",
+        "model": "unknown"
+      },
+      "human_author": "Anissa Rashid <anissarashid@users.noreply.github.com>"
+    }
+  }
+}
