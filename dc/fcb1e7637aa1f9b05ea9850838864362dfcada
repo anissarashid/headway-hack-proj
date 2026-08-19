@@ -1,0 +1,33 @@
+Makefile
+  s_bb34ed0efd3636::t_fcbf826b4dcf9b 238-241,266-277
+README.md
+  s_bb34ed0efd3636::t_ddcdc263849eb1 53,64
+deid/src/deid/__init__.py
+  s_bb34ed0efd3636::t_80a54174a82abf 6-9,14
+deid/src/deid/avro.py
+  s_bb34ed0efd3636::t_cc368ec2f4e6c6 50-58
+deid/src/deid/ops.py
+  s_bb34ed0efd3636::t_0694d7428a2b9d 102,105,112-122
+deid/src/deid/schema.py
+  s_bb34ed0efd3636::t_b1a790503f3e45 1-769
+deid/tests/test_schema.py
+  s_bb34ed0efd3636::t_13a7a541c21a60 1-774
+scripts/register-clean-schema.py
+  s_bb34ed0efd3636::t_0fd5144452647d 1-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "dcfcb1e7637aa1f9b05ea9850838864362dfcada",
+  "prompts": {},
+  "sessions": {
+    "s_bb34ed0efd3636": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3ea448a-ecc4-4631-af6f-1224a3bde65f",
+        "model": "unknown"
+      },
+      "human_author": "Anissa Rashid <anissarashid@users.noreply.github.com>"
+    }
+  }
+}
