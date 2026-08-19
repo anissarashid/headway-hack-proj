@@ -1,0 +1,5 @@
+# Umbrella values for the `pit` chart.
+# Per-subchart overrides live under the subchart's name.
+
+source-pg:
+  enabled: true

@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "source-pg.fullname" . }}-initdb
+  labels:
+    {{- include "source-pg.labels" . | nindent 4 }}
+data:
+  # Shell rather than .sql so the replication password can come from the
+  # secret via the environment — psql cannot expand env vars in a .sql file.
+  10-replication-role.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    psql -v ON_ERROR_STOP=1 --no-psqlrc \
+      --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+      CREATE ROLE "${PIT_REPLICATION_USER}"
+        WITH LOGIN REPLICATION PASSWORD '${PIT_REPLICATION_PASSWORD}';
+
+      -- Debezium's snapshot phase reads the tables directly, so the role needs
+      -- ordinary SELECT on top of REPLICATION. Schema objects arrive in a later
+      -- ticket; these defaults make sure the grants apply when they do.
+      GRANT CONNECT ON DATABASE "${POSTGRES_DB}" TO "${PIT_REPLICATION_USER}";
+      GRANT USAGE ON SCHEMA public TO "${PIT_REPLICATION_USER}";
+      GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${PIT_REPLICATION_USER}";
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public
+        GRANT SELECT ON TABLES TO "${PIT_REPLICATION_USER}";
+    EOSQL
+
+    echo "source-pg: replication role '${PIT_REPLICATION_USER}' created"
+  {{- range $name, $content := .Values.extraInitScripts }}
+  {{ $name }}: |
+    {{- $content | nindent 4 }}
+  {{- end }}
