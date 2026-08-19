@@ -50,6 +50,7 @@ deid/                          de-identification transformer            (M4)
   policy/clinic.yml            the policy: the auditable artifact
   src/deid/policy.py           the typed policy model, validated at the edge
   src/deid/ops.py              what each op does to a value and to its type
+  src/deid/schema.py           the clean Avro schema, derived from (raw schema, policy)
   src/deid/avro.py             the Avro type model both halves agree on
   src/deid/vocab.py            frozen word lists `fake` draws from
 pit/                           the pit CLI: initdb, tail, replay, snapshot     (M5-M7)
@@ -69,6 +70,7 @@ images/
   deid/                        python + uv base                (M4)
   pitctl/                      python + uv base                (M5/M7)
 scripts/
+  register-clean-schema.py     derives the clean schemas and registers them  (M4)
   verify-conf-docker.sh        cluster-free check of the rendered chart
   verify-schema.sql            schema and replica-identity assertions
   verify-sink-schema.sql       the sink's types are the policy's types  (M5)
@@ -454,9 +456,11 @@ and the two copies would disagree the first time a rule changed.
 So `pit initdb` reads the registry and emits DDL, and the registry is the single
 versioned source of truth for what the sink looks like.
 
-### Before M4 exists
+### Before the transformer runs
 
-Nothing registers `clean.*` subjects until the transformer runs, so `initdb`
+`derive_clean_schema` has landed, but nothing registers `clean.*` subjects yet —
+DATA-711's `make schema-check` registers under a `_check.` prefix and deletes them
+again, and DATA-712's runner is what will register them for real. So `initdb`
 defaults to the checked-in schema fixtures instead — the same code path, fed from
 disk:
 
@@ -466,10 +470,11 @@ make initdb SCHEMA_DIR=                      # use the registry instead
 ```
 
 Those fixtures are *derived*, not hand-authored: `hack/gen-clean-fixtures.py`
-runs the merged `deid.ops.build` over `deid/policy/clinic.yml` against the raw
-schemas Debezium actually registered. See
-[`pit/tests/fixtures/README.md`](pit/tests/fixtures/README.md) for the provenance
-and for the one column that needs a patch.
+(`make fixtures`) calls `deid.schema.derive_clean_schema` — the same function M4
+calls — over `deid/policy/clinic.yml` against the raw schemas Debezium actually
+registered. So they are M4's output rather than a guess at it. The clean **key**
+schema is the one half derived locally, because nothing in M4 derives one yet; see
+[`pit/tests/fixtures/README.md`](pit/tests/fixtures/README.md).
 
 ### The type map
 

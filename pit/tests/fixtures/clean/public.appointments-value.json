@@ -23,6 +23,7 @@
               "type": "string"
             },
             {
+              "default": null,
               "name": "scheduled_at",
               "type": [
                 "null",
@@ -34,6 +35,7 @@
               ]
             },
             {
+              "default": null,
               "name": "checked_in_at",
               "type": [
                 "null",
@@ -45,6 +47,7 @@
               ]
             },
             {
+              "default": null,
               "name": "completed_at",
               "type": [
                 "null",
@@ -56,6 +59,7 @@
               ]
             },
             {
+              "default": 30,
               "name": "duration_minutes",
               "type": {
                 "connect.default": 30,
@@ -63,6 +67,7 @@
               }
             },
             {
+              "default": "scheduled",
               "name": "status",
               "type": {
                 "connect.default": "scheduled",
@@ -75,6 +80,7 @@
               }
             },
             {
+              "default": null,
               "name": "created_at",
               "type": [
                 "null",
@@ -87,6 +93,7 @@
               ]
             },
             {
+              "default": null,
               "name": "updated_at",
               "type": [
                 "null",
@@ -100,6 +107,7 @@
             }
           ],
           "name": "Value",
+          "namespace": "clean.public.appointments",
           "type": "record"
         }
       ]
@@ -109,7 +117,7 @@
       "name": "after",
       "type": [
         "null",
-        "Value"
+        "clean.public.appointments.Value"
       ]
     },
     {

@@ -120,7 +120,7 @@ def test_nullability_comes_from_the_union(avro_type, nullable):
 
 
 def test_record_is_read_from_before_not_after(clean_schemas):
-    """`before` defines the record; `after` is a bare name reference to it.
+    """`before` defines the record; `after` is a name reference to it.
 
     Verified against all five registered schemas. The project description's
     "Avro named-type reuse" guardrail states this backwards, so a walker that
@@ -128,12 +128,36 @@ def test_record_is_read_from_before_not_after(clean_schemas):
     """
     for table, (_key, value) in clean_schemas.items():
         after = next(f for f in value["fields"] if f["name"] == "after")
-        assert "Value" in after["type"], f"{table}: after should reference Value by name"
+        references = [b for b in after["type"] if isinstance(b, str) and b != "null"]
+        assert references, f"{table}: after should reference the row image by name"
+        assert references[0].split(".")[-1] == "Value", f"{table}: {references[0]}"
         assert not any(isinstance(b, dict) for b in after["type"]), (
             f"{table}: after should be a reference, not a second definition"
         )
         record = ddl.value_record(value)
         assert record["fields"], f"{table}: no fields found"
+
+
+def test_both_spellings_of_the_after_reference_are_read(clean_schemas):
+    """The reference may arrive fully qualified or relative, and both must work.
+
+    `derive_clean_schema` emits `clean.public.patients.Value`, but the registry
+    canonicalizes a fully-qualified reference to its relative form, so reading the
+    same subject back gives `Value` instead. Semantically identical -- inside that
+    namespace, `Value` *is* that name -- which is why the walker takes the
+    definition from `before` and never has to resolve the reference at all.
+    See spikes/data-703-debezium-avro-registry/FINDINGS.md.
+    """
+    import copy
+
+    _key, derived = clean_schemas["patients"]
+    assert ddl.table_name(derived) == ("public", "patients")
+
+    round_tripped = copy.deepcopy(derived)
+    after = next(f for f in round_tripped["fields"] if f["name"] == "after")
+    after["type"] = ["null", "Value"]
+
+    assert ddl.value_record(round_tripped) == ddl.value_record(derived)
 
 
 def test_envelope_without_a_record_definition_raises():

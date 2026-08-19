@@ -99,16 +99,27 @@ RESTRICTED_ZIP3 = frozenset(
 # make a day. Anything not in here is not a timestamp this module will touch.
 UNITS_PER_DAY: Mapping[str, int] = {
     avro.DATE: 1,
+    avro.CONNECT_DATE: 1,
     "date": 1,
     avro.TIMESTAMP: 86_400_000,
+    avro.CONNECT_TIMESTAMP: 86_400_000,
     "timestamp-millis": 86_400_000,
     avro.MICRO_TIMESTAMP: 86_400_000_000,
     "timestamp-micros": 86_400_000_000,
     avro.NANO_TIMESTAMP: 86_400_000_000_000,
 }
 
-# ZonedTimestamp is temporal too, but it is a string and is handled apart.
-TEMPORAL_NAMES = frozenset(UNITS_PER_DAY) | {avro.ZONED_TIMESTAMP}
+# ZonedTimestamp is temporal too, but it is a string and is handled apart. Time
+# is temporal and is *not* in UNITS_PER_DAY: it counts from midnight rather than
+# from the epoch, so shifting it by days is a no-op and generalizing it to a
+# year gives 1970 for every row. It belongs here so an op refuses it rather than
+# tokenizing a time of day as if it were an identifier.
+TEMPORAL_NAMES = frozenset(UNITS_PER_DAY) | {
+    avro.ZONED_TIMESTAMP,
+    avro.CONNECT_TIME,
+    "time-millis",
+    "time-micros",
+}
 
 DECIMAL_NAMES = frozenset({avro.DECIMAL, avro.VARIABLE_SCALE_DECIMAL})
 

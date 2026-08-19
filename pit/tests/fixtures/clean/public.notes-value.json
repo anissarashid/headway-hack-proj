@@ -23,6 +23,7 @@
               "type": "string"
             },
             {
+              "default": null,
               "name": "appointment_id",
               "type": [
                 "null",
@@ -30,6 +31,7 @@
               ]
             },
             {
+              "default": null,
               "name": "amends_note_id",
               "type": [
                 "null",
@@ -37,6 +39,7 @@
               ]
             },
             {
+              "default": "progress",
               "name": "note_type",
               "type": {
                 "connect.default": "progress",
@@ -44,6 +47,7 @@
               }
             },
             {
+              "default": null,
               "name": "authored_at",
               "type": [
                 "null",
@@ -56,6 +60,7 @@
               ]
             },
             {
+              "default": null,
               "name": "signed_at",
               "type": [
                 "null",
@@ -67,6 +72,7 @@
               ]
             },
             {
+              "default": false,
               "name": "is_amended",
               "type": {
                 "connect.default": false,
@@ -74,6 +80,7 @@
               }
             },
             {
+              "default": null,
               "name": "created_at",
               "type": [
                 "null",
@@ -86,6 +93,7 @@
               ]
             },
             {
+              "default": null,
               "name": "updated_at",
               "type": [
                 "null",
@@ -99,6 +107,7 @@
             }
           ],
           "name": "Value",
+          "namespace": "clean.public.notes",
           "type": "record"
         }
       ]
@@ -108,7 +117,7 @@
       "name": "after",
       "type": [
         "null",
-        "Value"
+        "clean.public.notes.Value"
       ]
     },
     {

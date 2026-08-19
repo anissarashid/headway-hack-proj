@@ -19,6 +19,7 @@
               "type": "string"
             },
             {
+              "default": null,
               "name": "appointment_id",
               "type": [
                 "null",
@@ -41,6 +42,7 @@
               }
             },
             {
+              "default": null,
               "name": "allowed_amount",
               "type": [
                 "null",
@@ -59,6 +61,7 @@
               ]
             },
             {
+              "default": null,
               "name": "paid_amount",
               "type": [
                 "null",
@@ -77,6 +80,7 @@
               ]
             },
             {
+              "default": null,
               "name": "patient_responsibility",
               "type": [
                 "null",
@@ -105,6 +109,7 @@
               }
             },
             {
+              "default": null,
               "name": "procedure_code",
               "type": [
                 "null",
@@ -112,6 +117,7 @@
               ]
             },
             {
+              "default": "submitted",
               "name": "claim_status",
               "type": {
                 "connect.default": "submitted",
@@ -119,6 +125,7 @@
               }
             },
             {
+              "default": null,
               "name": "submitted_at",
               "type": [
                 "null",
@@ -131,6 +138,7 @@
               ]
             },
             {
+              "default": null,
               "name": "adjudicated_at",
               "type": [
                 "null",
@@ -142,6 +150,7 @@
               ]
             },
             {
+              "default": null,
               "name": "created_at",
               "type": [
                 "null",
@@ -154,6 +163,7 @@
               ]
             },
             {
+              "default": null,
               "name": "updated_at",
               "type": [
                 "null",
@@ -167,6 +177,7 @@
             }
           ],
           "name": "Value",
+          "namespace": "clean.public.claims",
           "type": "record"
         }
       ]
@@ -176,7 +187,7 @@
       "name": "after",
       "type": [
         "null",
-        "Value"
+        "clean.public.claims.Value"
       ]
     },
     {

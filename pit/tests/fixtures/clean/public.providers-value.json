@@ -23,6 +23,7 @@
               "type": "string"
             },
             {
+              "default": null,
               "name": "specialty",
               "type": [
                 "null",
@@ -30,6 +31,7 @@
               ]
             },
             {
+              "default": null,
               "name": "email",
               "type": [
                 "null",
@@ -37,6 +39,7 @@
               ]
             },
             {
+              "default": null,
               "name": "created_at",
               "type": [
                 "null",
@@ -49,6 +52,7 @@
               ]
             },
             {
+              "default": null,
               "name": "updated_at",
               "type": [
                 "null",
@@ -62,6 +66,7 @@
             }
           ],
           "name": "Value",
+          "namespace": "clean.public.providers",
           "type": "record"
         }
       ]
@@ -71,7 +76,7 @@
       "name": "after",
       "type": [
         "null",
-        "Value"
+        "clean.public.providers.Value"
       ]
     },
     {
