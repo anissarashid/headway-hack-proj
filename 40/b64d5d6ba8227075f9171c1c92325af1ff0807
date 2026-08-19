@@ -1,0 +1,49 @@
+Makefile
+  s_925a65c6deab5d::t_7b103e37d1585d 33-34,130-134,169,177-182,205-230
+  s_925a65c6deab5d::t_96dd9f96bf2a2a 231
+images/connect/Dockerfile
+  s_925a65c6deab5d::t_7b103e37d1585d 31-32
+  s_925a65c6deab5d::t_a3468718ffd807 3-13,25,33
+hack/forward.sh
+  s_925a65c6deab5d::t_7b103e37d1585d 1-60
+loadgen/tests/test_churn.py
+  s_925a65c6deab5d::t_7b103e37d1585d 1-353
+README.md
+  s_925a65c6deab5d::t_f14bfeab83784c 371-413,423
+  s_925a65c6deab5d::t_6f839462e506ba 53
+  s_925a65c6deab5d::t_7b103e37d1585d 48-52,54-55,76-77,87-90,101-106,121,125-169,346
+loadgen/pyproject.toml
+  s_925a65c6deab5d::t_7b103e37d1585d 18
+images/deid/entrypoint.sh
+  s_925a65c6deab5d::t_7b103e37d1585d 1-8
+images/deid/Dockerfile
+  s_925a65c6deab5d::t_7b103e37d1585d 1-25
+loadgen/src/loadgen/__init__.py
+  s_925a65c6deab5d::t_7b103e37d1585d 3-5
+images/pitctl/entrypoint.sh
+  s_925a65c6deab5d::t_7b103e37d1585d 1-8
+hack/verify.sh
+  s_925a65c6deab5d::t_7b103e37d1585d 1-51
+loadgen/src/loadgen/__main__.py
+  s_925a65c6deab5d::t_7b103e37d1585d 1-1338
+images/pitctl/Dockerfile
+  s_925a65c6deab5d::t_7b103e37d1585d 1-25
+loadgen/README.md
+  s_925a65c6deab5d::t_7b103e37d1585d 12,15,18-22,27,29-32,42-46,51-52,157-269,278-292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "40b64d5d6ba8227075f9171c1c92325af1ff0807",
+  "prompts": {},
+  "sessions": {
+    "s_925a65c6deab5d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b462c9c-d701-4d69-9e99-a9abb6f45cdc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Darren Liu <dliu9999@gmail.com>"
+    }
+  }
+}
