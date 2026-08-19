@@ -1,0 +1,6 @@
+{{ .Chart.Name }} {{ .Chart.Version }} installed as {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+Subcharts enabled:
+{{ if index .Values "source-pg" "enabled" }}  - source-pg (Postgres {{ (index .Subcharts "source-pg").Chart.AppVersion }}, wal_level=logical){{ end }}
+
+Run `make verify` to check the source database is ready and decoding logically.

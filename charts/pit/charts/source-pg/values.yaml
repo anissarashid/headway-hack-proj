@@ -1,0 +1,76 @@
+image:
+  repository: postgres
+  tag: "16.10"
+  pullPolicy: IfNotPresent
+
+# The official image runs as uid/gid 999. fsGroup makes the PVC writable by it.
+podSecurityContext:
+  fsGroup: 999
+containerSecurityContext:
+  runAsUser: 999
+  runAsGroup: 999
+  allowPrivilegeEscalation: false
+
+auth:
+  database: pit
+  username: pit
+  # Dev-only defaults. Set auth.existingSecret to supply real credentials.
+  password: pit-dev-password
+  # Role Debezium connects as. Needs LOGIN + REPLICATION to open a slot.
+  replicationUsername: debezium
+  replicationPassword: debezium-dev-password
+  # Secret with keys `postgres-password` and `replication-password`.
+  existingSecret: ""
+
+# PGDATA is a subdirectory of the mount, not the mount root — the official image
+# recommends this so initdb never has to contend with a non-empty volume root.
+dataDir: /var/lib/postgresql/data
+pgData: /var/lib/postgresql/data/pgdata
+postgresqlConfDir: /etc/postgresql
+
+# The reason this chart exists. wal_level=logical cannot be changed without a
+# restart, so it is baked into postgresql.conf rather than set via ALTER SYSTEM.
+logicalDecoding:
+  walLevel: logical
+  maxReplicationSlots: 4
+  maxWalSenders: 4
+  # Retain enough WAL that a briefly-disconnected connector can catch up.
+  walKeepSize: 512MB
+
+# Appended verbatim to postgresql.conf. Anything not CDC-critical goes here.
+extraPostgresqlConf: |
+  max_connections = 100
+  shared_buffers = 128MB
+  dynamic_shared_memory_type = posix
+  log_timezone = 'Etc/UTC'
+  timezone = 'Etc/UTC'
+  log_line_prefix = '%m [%p] %q%u@%d '
+  datestyle = 'iso, mdy'
+  default_text_search_config = 'pg_catalog.english'
+
+# Extra files dropped into /docker-entrypoint-initdb.d, keyed by filename.
+# Sorted lexically by the entrypoint, so prefix with a number. The chart's own
+# scripts use the 10- prefix; downstream schema work should use 20- and up.
+extraInitScripts: {}
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  enabled: true
+  size: 8Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

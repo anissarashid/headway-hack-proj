@@ -1,0 +1,16 @@
+source-pg is installed as {{ include "source-pg.fullname" . }}.
+
+Confirm logical decoding is live (the acceptance check for DATA-699):
+
+  kubectl exec -n {{ .Release.Namespace }} sts/{{ include "source-pg.fullname" . }} -- \
+    psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -Atc 'SHOW wal_level;'
+
+Expected: logical
+
+Connect from your machine:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "source-pg.fullname" . }} 5432:{{ .Values.service.port }}
+  psql "postgresql://{{ .Values.auth.username }}@127.0.0.1:5432/{{ .Values.auth.database }}"
+
+Debezium connects as '{{ .Values.auth.replicationUsername }}'; its password is in
+secret/{{ include "source-pg.secretName" . }} under key replication-password.

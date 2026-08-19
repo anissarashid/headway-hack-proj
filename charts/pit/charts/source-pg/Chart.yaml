@@ -1,0 +1,10 @@
+apiVersion: v2
+name: source-pg
+description: >-
+  Postgres 16 source database with wal_level=logical, so Debezium can create a
+  replication slot and decode changes. Authored in-tree rather than depending on
+  Bitnami's chart: Bitnami moved its free images to bitnamilegacy in 2025 and the
+  catalog now points at a paid registry.
+type: application
+version: 0.1.0
+appVersion: "16.10"

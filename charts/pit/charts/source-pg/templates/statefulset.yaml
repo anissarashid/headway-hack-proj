@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "source-pg.fullname" . }}
+  labels:
+    {{- include "source-pg.labels" . | nindent 4 }}
+spec:
+  # Single source of truth for CDC. Replicas beyond one would each open their
+  # own slot and diverge, so this is deliberately not scalable.
+  replicas: 1
+  serviceName: {{ include "source-pg.fullname" . }}-headless
+  selector:
+    matchLabels:
+      {{- include "source-pg.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "source-pg.selectorLabels" . | nindent 8 }}
+      annotations:
+        # wal_level only takes effect on restart, so roll the pod when the
+        # rendered config changes.
+        checksum/postgresql-conf: {{ include (print $.Template.BasePath "/configmap-postgresql-conf.yaml") . | sha256sum }}
+        checksum/initdb: {{ include (print $.Template.BasePath "/configmap-initdb.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          # The entrypoint prepends `postgres` when the first arg starts with -.
+          args:
+            - "-c"
+            - "config_file={{ .Values.postgresqlConfDir }}/postgresql.conf"
+          ports:
+            - name: postgresql
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: PGDATA
+              value: {{ .Values.pgData | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "source-pg.secretName" . }}
+                  key: postgres-password
+            - name: PIT_REPLICATION_USER
+              value: {{ .Values.auth.replicationUsername | quote }}
+            - name: PIT_REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "source-pg.secretName" . }}
+                  key: replication-password
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.dataDir }}
+            - name: postgresql-conf
+              mountPath: {{ .Values.postgresqlConfDir }}
+              readOnly: true
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - exec pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            # Generous: initdb plus the init scripts can take a while on a cold
+            # volume, and a restart mid-initdb leaves a half-built cluster.
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: postgresql-conf
+          configMap:
+            name: {{ include "source-pg.fullname" . }}-conf
+        - name: initdb
+          configMap:
+            name: {{ include "source-pg.fullname" . }}-initdb
+            # The entrypoint sources non-executable .sh files, but mark them
+            # executable anyway so it execs them directly.
+            defaultMode: 0555
+        {{- if not .Values.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "source-pg.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+  {{- end }}
