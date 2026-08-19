@@ -1,0 +1,49 @@
+Makefile
+  s_0b48b000dd8c1c::t_179a77c8209db4 27-31,150-174,176,234-237,325,328-329
+README.md
+  s_0b48b000dd8c1c::t_03b3c96ce1dd77 40,123,328-370
+charts/pit/Chart.lock
+  s_0b48b000dd8c1c::t_3c0fe417280879 16,20-21
+charts/pit/Chart.yaml
+  s_0b48b000dd8c1c::t_4b3317f6db5b2b 33
+charts/pit/charts/sink-pg/Chart.yaml
+  s_0b48b000dd8c1c::t_88e3c05d286cef 3-7,9-10
+charts/pit/charts/sink-pg/templates/NOTES.txt
+  s_0b48b000dd8c1c::t_41a0fd055ed749 1-25
+charts/pit/charts/sink-pg/templates/_helpers.tpl
+  s_0b48b000dd8c1c::t_1f9f041d1211cb 1-36
+charts/pit/charts/sink-pg/templates/configmap-initdb.yaml
+  s_0b48b000dd8c1c::t_4d476555c7d22a 1-13
+charts/pit/charts/sink-pg/templates/secret.yaml
+  s_0b48b000dd8c1c::t_24aad5fe8897d1 1-13
+charts/pit/charts/sink-pg/templates/service.yaml
+  s_0b48b000dd8c1c::t_609af85524d2e0 1-31
+charts/pit/charts/sink-pg/templates/statefulset.yaml
+  s_0b48b000dd8c1c::t_281c444325ade8 1-127
+charts/pit/charts/sink-pg/values.yaml
+  s_0b48b000dd8c1c::t_f9c1b6bb5cbbef 1-63
+charts/pit/templates/NOTES.txt
+  s_0b48b000dd8c1c::t_df6c8e680dc4a4 4-8,11
+charts/pit/values.yaml
+  s_0b48b000dd8c1c::t_070603cc82b736 38-44
+hack/forward.sh
+  s_0b48b000dd8c1c::t_09081b24e1a101 24
+hack/verify.sh
+  s_0b48b000dd8c1c::t_538477a714e222 40-41,44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "5837c65fe4739555d9bd26fd77536c92763fce25",
+  "prompts": {},
+  "sessions": {
+    "s_0b48b000dd8c1c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "acf36a0e-c3f5-4e0e-ab6b-9e448cd5c439",
+        "model": "claude-opus-5"
+      },
+      "human_author": "petercollins <petercollinsheadway@users.noreply.github.com>"
+    }
+  }
+}
