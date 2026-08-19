@@ -1,0 +1,75 @@
+pit/src/pit/cli.py
+  s_10b91ae05ad1a8::t_d61b84a2e7540d 3-4,6-8,14,21
+  s_10b91ae05ad1a8::t_1790d9f9e9183b 84-103
+  s_10b91ae05ad1a8::t_1ac046b4401b16 165-192
+charts/pit/charts/pitctl/Chart.yaml
+  s_10b91ae05ad1a8::t_d857c9e9296fc3 3-6,8-9
+charts/pit/templates/NOTES.txt
+  s_10b91ae05ad1a8::t_a7e6d157c9eb82 9-12,16-19
+charts/pit/Chart.yaml
+  s_10b91ae05ad1a8::t_d857c9e9296fc3 37
+README.md
+  s_10b91ae05ad1a8::t_fe9d7016592384 44-45,62-63,73
+  s_10b91ae05ad1a8::t_a640f6ebef3f01 560-661
+  s_10b91ae05ad1a8::t_ba69af3afca949 315-319
+charts/pit/values.yaml
+  s_10b91ae05ad1a8::t_d857c9e9296fc3 45-52
+pit/src/pit/ddl.py
+  s_10b91ae05ad1a8::t_8ecb7160419526 519-536
+pit/src/pit/__init__.py
+  s_10b91ae05ad1a8::t_f00cdbf1941676 18-20,25
+pit/tests/test_tail.py
+  s_10b91ae05ad1a8::t_b7808edb5ab044 19,158,162
+  s_10b91ae05ad1a8::t_9301e9625e4a9d 1-18,20-148,151-157,159-161,163-190,192-265
+  s_10b91ae05ad1a8::t_78c07e9988e851 149-150
+  s_10b91ae05ad1a8::t_5aaa78ff7260b6 191
+charts/pit/charts/pitctl/templates/deployment.yaml
+  s_10b91ae05ad1a8::t_e0548c4167f105 1-85
+images/pitctl/Dockerfile
+  s_10b91ae05ad1a8::t_faefedd7dbf6b3 1,3-5,7-15,20-38,41-42,47-60,65-66
+pit/tests/conftest.py
+  s_10b91ae05ad1a8::t_3f5c0de9100c10 56-77
+charts/pit/charts/pitctl/templates/NOTES.txt
+  s_10b91ae05ad1a8::t_e5f68f79415b04 1-26
+charts/pit/charts/pitctl/values.yaml
+  s_10b91ae05ad1a8::t_f50309616ad192 1-64
+.dockerignore
+  s_10b91ae05ad1a8::t_161a5822f74aaf 1-31
+charts/pit/charts/pitctl/templates/_helpers.tpl
+  s_10b91ae05ad1a8::t_73fadfa49b2df1 1-62
+charts/pit/charts/pitctl/templates/rbac.yaml
+  s_10b91ae05ad1a8::t_61fa1c34b9c517 23,30-37
+  s_10b91ae05ad1a8::t_bf1bd9f1945569 48
+  s_10b91ae05ad1a8::t_463bb962eca7cc 1-22,24-29,38-47,49-72
+pit/tests/test_apply.py
+  s_10b91ae05ad1a8::t_b7808edb5ab044 14,113,118
+pit/src/pit/tail.py
+  s_10b91ae05ad1a8::t_5aaa78ff7260b6 146-149,151-152,196-197
+  s_10b91ae05ad1a8::t_b05ec2dd2e3e22 1-145,150,153-195,198-201
+Makefile
+  s_10b91ae05ad1a8::t_be4b4c6714bc72 365-381,395-415
+  s_10b91ae05ad1a8::t_f5caa30f711efe 206-208
+  s_10b91ae05ad1a8::t_e1f91094dee28d 41-45,48-49
+  s_10b91ae05ad1a8::t_209b198a081a84 382-394
+charts/pit/Chart.lock
+  s_10b91ae05ad1a8::t_9d4c9f25647ea0 19-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "25733198645f1926ef7e0cf16db10b7f9b3c1ae6",
+  "prompts": {},
+  "sessions": {
+    "s_10b91ae05ad1a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0fe1891c-3ece-4da8-b819-025849d8b4ac",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Mezie Emelle <mezie.emelle@findheadway.com>",
+      "custom_attributes": {
+        "runtime": "local"
+      }
+    }
+  }
+}
