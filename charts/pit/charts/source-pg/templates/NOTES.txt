@@ -6,6 +6,17 @@ Confirm logical decoding is live (the acceptance check for DATA-699):
     psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -Atc 'SHOW wal_level;'
 
 Expected: logical
+{{- if .Values.clinicSchema.enabled }}
+
+Confirm the clinic schema is captured (the acceptance check for DATA-700):
+
+  kubectl exec -n {{ .Release.Namespace }} sts/{{ include "source-pg.fullname" . }} -- \
+    psql -U {{ .Values.auth.username }} -d {{ .Values.auth.database }} -c 'table pit_captured_tables;'
+
+Expected: patients, providers, appointments, claims and notes, each with
+relreplident=f and a <table>_history ledger. `make verify-schema` asserts it and
+proves an update writes history.
+{{- end }}
 
 Connect from your machine:
 
