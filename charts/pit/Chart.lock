@@ -16,6 +16,6 @@ dependencies:
   version: 0.2.0
 - name: pitctl
   repository: file://charts/pitctl
-  version: 0.1.0
-digest: sha256:21e98fa08fece782541daa0d470bb3358bee18fa976ad01636f6b1913eca4741
-generated: "2026-08-19T15:16:08.265825-04:00"
+  version: 0.2.0
+digest: sha256:8f6cc675a2608b6592dac9aec7e8c727d1c48a2be535110bf5824ef4d708a600
+generated: "2026-08-19T16:19:30.525382-04:00"

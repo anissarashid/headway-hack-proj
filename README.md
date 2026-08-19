@@ -41,7 +41,8 @@ charts/pit/                    umbrella Helm chart
     connect/                   Debezium + Avro Connect         (M3)
       connectors/source-pg.json  the Debezium connector config (registered by a hook Job)
     deid/                      de-identification transformer   (M4)
-    pitctl/                    pit-tail / snapshot / restore   (M5/M7)
+    pitctl/                    pit-tail Deployment + scale RBAC (M5)
+      templates/rbac.yaml        the one credential that can change cluster state
 loadgen/                       deterministic synthetic load generator   (M2)
   src/loadgen/config.py        seed constant, counts, distributions
   src/loadgen/seed.py          the generator, loader and CLI
@@ -58,7 +59,8 @@ pit/                           the pit CLI: initdb, tail, replay, snapshot     (
   src/pit/envelope.py          CDC envelope -> upsert/delete/skip, pure
   src/pit/applier.py           statements -> SQL, one transaction, idempotent
   src/pit/registry.py          read-only schema registry client
-  src/pit/cli.py               `pit initdb`
+  src/pit/tail.py              the loop: reconcile, apply, wait
+  src/pit/cli.py               `pit initdb`, `pit tail`
   tests/fixtures/raw/          the schemas Debezium registered (ground truth)
   tests/fixtures/clean/        the schemas M4 will register (derived; see its README)
 hack/
@@ -68,7 +70,7 @@ hack/
 images/
   connect/                     Debezium + Confluent Avro converter   (M3)
   deid/                        python + uv base                (M4)
-  pitctl/                      python + uv base                (M5/M7)
+  pitctl/                      the pit CLI + kubectl; built from the repo root (M5)
 scripts/
   register-clean-schema.py     derives the clean schemas and registers them  (M4)
   verify-conf-docker.sh        cluster-free check of the rendered chart
@@ -310,9 +312,11 @@ by design.
 - **M2 — Source Postgres and clinic schema:** ✅
 - **M3 — Connect image and Debezium Avro source:** ✅
 - **M5 — Applier and live sink:** in progress. The sink is deployed
-  ([sink-pg](#sink-pg)) and `pit initdb` builds its schema from the registered
-  clean Avro schemas ([pit initdb](#pit-initdb--the-sink-schema-comes-from-the-registry)).
-  The applier's envelope translation and SQL are done; its Kafka consumer waits on M4.
+  ([sink-pg](#sink-pg)), `pit initdb` builds its schema from the registered clean
+  Avro schemas ([pit initdb](#pit-initdb--the-sink-schema-comes-from-the-registry)),
+  and the applier runs as a Deployment with the RBAC a snapshot needs
+  ([pit-tail](#pit-tail--the-applier-as-a-deployment)). The envelope translation and
+  SQL are done; the Kafka consumer waits on DATA-712.
 - M4, M6–M8: see the [Linear project](https://linear.app/headway/project/point-in-time-de-identified-database-replica-poc-a605b4c0031e/overview).
 
 ## source-pg
@@ -552,6 +556,108 @@ the four `claims` amounts are `numeric(12,2)`; all 17 timestamp columns are
 absent, `notes.body` included; `date_of_birth` is an integer year; all five
 primary keys are `text`; and there are no foreign keys, because per-table topics
 replay independently and any FK would reject a legal replay.
+
+## pit-tail — the applier as a Deployment
+
+```
+make pitctl-check   # the acceptance check
+make logs-tail      # what it is doing
+make tail-once      # one pass, locally, against the sink
+```
+
+A finished tail does three things in a loop: reconcile the sink schema against the
+registry, consume a batch of cleaned records, apply it with the offsets in the same
+transaction. **The middle step is not implemented yet** — it needs a Kafka consumer,
+and that needs DATA-712 to register real `clean.*` subjects with records behind
+them. `pit.tail.consume_and_apply` is the seam, and its docstring pins the shape it
+has to fit.
+
+The other two steps run now, and the first is not busywork: the sink's schema has
+to track the registry as new schema versions are registered, and the tables have to
+exist before anything can be written to them. So the tail keeps `pit_base`'s schema
+current, which is what M7 will cut snapshots from.
+
+### Waiting is not failing
+
+Until the transformer runs there is nothing to tail, and the tail says so **once**
+and waits:
+
+```
+INFO pit.tail: tailing into pit_base, registry http://pit-redpanda:8081, every 15s
+INFO pit.tail: no clean.* subjects registered yet; waiting
+```
+
+A pod that exited here would `CrashLoopBackOff` and bury the reason in a restart
+count. Same for a briefly unreachable sink or registry — a rolling restart is a
+blip to retry, not a reason to die. This is the same shape M4 uses when it halts one
+topic and leaves the rest running.
+
+### The RBAC, and why it is the interesting part
+
+`CREATE DATABASE ... TEMPLATE pit_base` fails while any connection to `pit_base` is
+open, and the tail holds one. So M7's snapshot CronJob scales this Deployment to
+zero, cuts the clone, and scales it back — which needs a ServiceAccount that can
+scale it. That is the one credential in this project able to change cluster state,
+so it is scoped three ways: to the `scale` **subresource** (not the Deployment, so
+the holder cannot swap the image), to read/write on it and nothing else, and to
+`resourceNames: [pit-tail]` — without which the same verbs would apply to `connect`
+and `deid` too.
+
+**`patch` is required, and `update` alone is not.** DATA-716 specifies "get and
+update on `deployments/scale`", and that does not work: `kubectl scale` sends a
+PATCH, so with only `update` the command comes back `Forbidden` — while
+
+```
+kubectl auth can-i update deployments/pit-tail --subresource=scale   # -> yes
+```
+
+still answers yes, which makes the gap look like it is not there. Found by running
+it, not by reading it. `update` is kept as well, because a client library doing a
+read-modify-write PUT is equally legitimate and M7's CronJob may use one.
+
+### The Deployment's name is a fixed string
+
+`pit-tail`, not `<release>-pitctl`. Four things address it by that exact name: the
+Role's `resourceNames`, M7's snapshot CronJob, and the `reload` and `logs-tail`
+Makefile targets. A derived name would have to be threaded through all of them in
+step, and the failure when it drifted would be a snapshot that silently could not
+quiesce the tail.
+
+`replicas: 1`, and `strategy: Recreate`. Two tails would consume the same partitions
+and apply the same records twice — idempotent, so not corrupting, but pointless, and
+during a rolling update the overlap would leave a snapshot unable to quiesce the
+database by scaling to one. Scaling to *zero* is the meaningful operation, and it is
+a clean shutdown: SIGTERM stops the loop between passes and exits 0.
+
+### The image
+
+One image for the tail, M7's snapshot CronJob and M6's restore Job — they want the
+same code, and a second image would be a second thing to keep in step. It carries
+`kubectl` for exactly one job: the scale-down above.
+
+It is **built from the repo root**, not from `images/pitctl/`:
+
+```
+docker build -f images/pitctl/Dockerfile .
+```
+
+A Dockerfile cannot `COPY` from outside its build context, and the code it packages
+lives in `pit/`. That makes the whole repo the context, which is what the root
+`.dockerignore` is for — without it every build ships each `.venv` in the tree. M4's
+`deid` image will need the same treatment.
+
+### Verifying
+
+```
+make pitctl-check
+```
+
+Waits for rollout, prints what the tail is doing, asserts the ServiceAccount can
+`get`/`patch`/`update` the scale subresource **and** that it cannot delete
+Deployments, read Secrets, create Pods or update the Deployment itself. Then it
+scales to zero from inside the pod using only the mounted token, takes a
+`CREATE DATABASE ... TEMPLATE pit_base` clone in that window — the thing the whole
+arrangement exists for — drops it, and scales back up.
 
 ## Clinic schema
 

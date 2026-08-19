@@ -11,6 +11,7 @@ from decimal import Decimal
 
 import pytest
 
+from conftest import reset_offsets
 from pit import applier, ddl, envelope
 
 psycopg = pytest.importorskip("psycopg")
@@ -109,10 +110,12 @@ def conn(sink_dsn, clean_dir):
             cursor.execute("drop schema if exists pit_test cascade")
         connection.commit()
         ddl.ensure_schema(connection, scratch)
+        reset_offsets(connection)
         connection.scratch_tables = {table.name: table for table in scratch}
         try:
             yield connection
         finally:
+            reset_offsets(connection)
             with connection.cursor() as cursor:
                 cursor.execute("drop schema if exists pit_test cascade")
             connection.commit()

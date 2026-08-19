@@ -1,0 +1,26 @@
+pitctl is installed. The tail runs as deploy/{{ include "pitctl.tailName" . }}.
+
+It keeps '{{ .Values.tail.database }}' current against the clean schemas in the
+registry, reconciling every {{ .Values.tail.intervalSeconds }}s:
+
+  kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "pitctl.tailName" . }} -f
+
+Until the transformer registers clean.* subjects there is nothing to tail, and the
+log says so once and waits. That is the expected state, not a failure -- a pod that
+exited here would CrashLoopBackOff and bury the reason in a restart count.
+
+The ServiceAccount can scale this one Deployment, and nothing else. That is what
+M7's snapshot CronJob needs: CREATE DATABASE ... TEMPLATE {{ .Values.tail.database }}
+fails while the tail holds a connection, so the snapshot scales it to zero, cuts
+the clone, and scales it back. Check the grant is real and is narrow:
+
+  kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "pitctl.tailName" . }} -- \
+    kubectl auth can-i update deployments/scale --subresource=scale \
+      --name={{ include "pitctl.tailName" . }}
+  # -> yes
+
+  kubectl exec -n {{ .Release.Namespace }} deploy/{{ include "pitctl.tailName" . }} -- \
+    kubectl auth can-i delete deployments
+  # -> no
+
+`make pitctl-check` runs the whole check, including scaling to zero and back.

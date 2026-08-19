@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # Fixed name. See pitctl.tailName in _helpers.tpl -- the Role, M7's CronJob and
+  # two Makefile targets all address this exact string.
+  name: {{ include "pitctl.tailName" . }}
+  labels:
+    {{- include "pitctl.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.tail.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pitctl.selectorLabels" . | nindent 6 }}
+  # Recreate, not RollingUpdate. Two tails briefly overlapping would both hold a
+  # connection to pit_base, and a snapshot taken in that window could not quiesce
+  # it by scaling to one. Nothing is served here, so there is no availability to
+  # protect by overlapping.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "pitctl.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "pitctl.serviceAccountName" . }}
+      # The token is mounted because M7's snapshot CronJob is not the only thing
+      # that scales this Deployment -- the acceptance check for the RBAC runs
+      # `kubectl scale` from inside this pod, using only this token.
+      automountServiceAccountToken: true
+      # SIGTERM is a scale-to-zero, which is a snapshot being taken. The tail
+      # stops between passes rather than mid-pass, so give it room to finish one.
+      terminationGracePeriodSeconds: {{ add .Values.tail.intervalSeconds 15 }}
+      containers:
+        - name: pit-tail
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - tail
+            - --db
+            - {{ .Values.tail.database | quote }}
+            - --registry
+            - {{ .Values.registry.url | quote }}
+            - --interval
+            - {{ .Values.tail.intervalSeconds | quote }}
+          env:
+            # Without a dbname: `--db` supplies it. The password is read from the
+            # sink subchart's own Secret rather than restated here, so rotating it
+            # is one edit.
+            - name: PIT_SINK_DSN
+              value: {{ include "pitctl.sinkDsn" . | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sink.existingSecret }}
+                  key: {{ .Values.sink.passwordKey }}
+          # No probes. There is nothing to serve and nothing to answer on: a tail
+          # is healthy when its process is alive, which is what the restart policy
+          # already covers. A liveness probe would need an endpoint invented for
+          # it, and a readiness probe would gate traffic that does not exist.
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

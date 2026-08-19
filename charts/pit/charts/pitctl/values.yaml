@@ -1,0 +1,64 @@
+image:
+  repository: pit/pitctl
+  tag: dev
+  # Never: the image is side-loaded into minikube with `minikube image load`, so
+  # there is nothing to pull and IfNotPresent would still try on a miss.
+  pullPolicy: IfNotPresent
+
+tail:
+  # A fixed name, not a derived one. M7's snapshot CronJob scales this Deployment
+  # to zero by name, and the Role grants deployments/scale on this name only --
+  # see the comment on pitctl.tailName in _helpers.tpl.
+  name: pit-tail
+
+  # The database the tail keeps current, and what M7 cuts snapshots from.
+  database: pit_base
+
+  # Seconds between passes. A pass is a registry GET per topic plus a few catalog
+  # reads, so this is cheap; 15s is short enough that a newly registered schema
+  # reaches the sink promptly.
+  intervalSeconds: 15
+
+  # One replica, and not scalable past it. Two tails would consume the same
+  # partitions and apply the same records twice -- idempotent, so not corrupting,
+  # but pointless and twice the load. Scaling to *zero* is meaningful and is what
+  # M7 does.
+  replicaCount: 1
+
+# The registry the clean schemas are read from. Redpanda serves it on the broker
+# itself rather than as a separate service.
+registry:
+  url: http://pit-redpanda:8081
+
+# The sink. Host and port match the sink-pg subchart's Service; the password comes
+# from that subchart's Secret rather than being restated here.
+sink:
+  host: pit-sink-pg
+  port: 5432
+  user: pit
+  existingSecret: pit-sink-pg
+  passwordKey: postgres-password
+
+serviceAccount:
+  create: true
+  # Defaults to the tail's name.
+  name: ""
+
+rbac:
+  # The Role exists for one operation: M7's snapshot CronJob scaling the tail to
+  # zero so CREATE DATABASE ... TEMPLATE can take its clone. Off leaves the
+  # ServiceAccount with no permissions at all, which is correct until M7 needs it
+  # -- but M7 is blocked without it, so it defaults on.
+  create: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

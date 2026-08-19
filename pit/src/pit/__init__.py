@@ -15,10 +15,11 @@ was cut.
 
 :mod:`pit.envelope` and the pure half of :mod:`pit.ddl` do the translating and
 touch nothing, so both are testable without a broker or a database. The edges are
-:mod:`pit.registry` (HTTP) and the connection-taking functions in
-:mod:`pit.applier` and :mod:`pit.ddl`.
+:mod:`pit.registry` (HTTP), the connection-taking functions in
+:mod:`pit.applier` and :mod:`pit.ddl`, and :mod:`pit.tail`, which is the loop that
+drives them.
 """
 
 from __future__ import annotations
 
-__all__ = ["applier", "config", "ddl", "envelope", "registry"]
+__all__ = ["applier", "config", "ddl", "envelope", "registry", "tail"]

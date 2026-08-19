@@ -516,6 +516,24 @@ def ensure_schema(conn, tables: Iterable[Table], *, dry_run: bool = False) -> li
     return statements
 
 
+def changes(statements: Iterable[str]) -> list[str]:
+    """The statements that altered a payload table.
+
+    :func:`ensure_schema` always emits the bookkeeping statements -- they are
+    ``IF NOT EXISTS`` and cheap, so running them unconditionally is simpler than
+    checking first. But they are not *changes*, and counting them as such would
+    have the tail report "1 schema change" on every pass forever, which trains
+    everyone to ignore the one pass where it means something.
+    """
+    bookkeeping = {create_schema(META_SCHEMA), create_applied_offsets()}
+    return [
+        statement
+        for statement in statements
+        if statement not in bookkeeping
+        and statement.startswith(("create table", "alter table"))
+    ]
+
+
 def create_applied_offsets() -> str:
     """The applier's bookkeeping table.
 

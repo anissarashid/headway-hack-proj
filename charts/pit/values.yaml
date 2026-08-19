@@ -42,10 +42,16 @@ connect:
 sink-pg:
   enabled: true
 
+# The applier (M5). Keeps pit_base current against the clean schemas in the
+# registry, and carries the RBAC that lets M7's snapshot scale it to zero. On
+# before the transformer that fills the clean topics: with nothing to tail it
+# reconciles the schema and waits, which is a readable state rather than a
+# CrashLoopBackOff.
+pitctl:
+  enabled: true
+
 # Subcharts filled in by later milestones. Off until their milestone lands, so a
 # stray template cannot deploy before the milestone that owns it.
 # Each block is still present so environment overrides have a stable path.
 deid:
-  enabled: false
-pitctl:
   enabled: false

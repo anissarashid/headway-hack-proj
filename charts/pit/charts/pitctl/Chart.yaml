@@ -1,5 +1,9 @@
 apiVersion: v2
 name: pitctl
-description: pit-tail Deployment, snapshot CronJob and restore Jobs. Filled in at M5/M7.
+description: >-
+  The pit CLI as a workload. pit-tail keeps pit_base current against the clean
+  schemas in the registry; M7's snapshot CronJob and M6's restore Job run the same
+  image. Carries the RBAC that lets a snapshot quiesce the tail.
 type: application
-version: 0.1.0
+version: 0.2.0
+appVersion: "0.1.0"

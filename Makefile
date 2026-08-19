@@ -38,9 +38,15 @@ UV      := uv run
 
 # component -> docker build context. Dockerfiles arrive in later milestones
 # (connect=M3, deid=M4, pitctl=M5); build steps skip cleanly until then.
+#
+# pitctl builds from the repo root and not from its own directory: it has to
+# package pit/, and a build context cannot escape itself. The root .dockerignore
+# is what keeps that context from including every virtualenv in the repo. M4's
+# deid image will need the same treatment for deid/.
 CONNECT_CTX := images/connect
 DEID_CTX    := images/deid
-PITCTL_CTX  := images/pitctl
+PITCTL_CTX  := .
+PITCTL_FILE := images/pitctl/Dockerfile
 
 .DEFAULT_GOAL := help
 
@@ -197,9 +203,9 @@ build-deid:
 	  docker build -t $(IMG_PREFIX)/deid:$(TAG) $(DEID_CTX); \
 	else echo "skip deid image: $(DEID_CTX)/Dockerfile not present yet (M4)"; fi
 build-pitctl:
-	@if [ -f $(PITCTL_CTX)/Dockerfile ]; then \
-	  docker build -t $(IMG_PREFIX)/pitctl:$(TAG) $(PITCTL_CTX); \
-	else echo "skip pitctl image: $(PITCTL_CTX)/Dockerfile not present yet (M5)"; fi
+	@if [ -f $(PITCTL_FILE) ]; then \
+	  docker build -t $(IMG_PREFIX)/pitctl:$(TAG) -f $(PITCTL_FILE) $(PITCTL_CTX); \
+	else echo "skip pitctl image: $(PITCTL_FILE) not present yet (M5)"; fi
 
 .PHONY: load
 load: ## Load built images into the minikube profile
@@ -355,6 +361,57 @@ pit-check: ## DATA-714 acceptance check: the sink's types are the policy's types
 
 .PHONY: verify-initdb
 verify-initdb: pit-check ## Alias for pit-check
+
+# The tail Deployment. TAIL is a fixed string, matching pitctl's values.yaml --
+# M7's snapshot CronJob scales this name and the Role grants it on this name only.
+TAIL ?= pit-tail
+
+.PHONY: tail-once
+tail-once: ## Run a single tail pass locally against the sink (needs `make forward`)
+	cd pit && PIT_SINK_DSN="$(SINK_DSN)" PIT_REGISTRY_URL="$(REGISTRY_URL)" \
+	  $(UV) python -m pit.cli tail --db $(PIT_DB) --once
+
+.PHONY: pitctl-check
+pitctl-check: ## DATA-716 acceptance check: the tail runs, and can scale itself to zero
+	@set -euo pipefail; \
+	echo "==> waiting for deploy/$(TAIL)"; \
+	$(KUBECTL) rollout status deploy/$(TAIL) --timeout=3m; \
+	echo "==> what it is doing"; \
+	$(KUBECTL) logs deploy/$(TAIL) --tail=5; \
+	echo "==> the ServiceAccount can scale this one Deployment, from inside the pod"; \
+	for verb in get patch update; do \
+	  answer=$$($(KUBECTL) exec deploy/$(TAIL) -- \
+	    kubectl auth can-i $$verb deployments/$(TAIL) --subresource=scale 2>/dev/null || true); \
+	  printf '    %-6s deployments/scale  %s\n' "$$verb" "$$answer"; \
+	  if [[ "$$answer" != "yes" ]]; then \
+	    echo "FAIL: cannot $$verb the scale subresource."; \
+	    if [[ "$$verb" == "patch" ]]; then \
+	      echo "      kubectl scale sends a PATCH, so 'update' alone is not enough --"; \
+	      echo "      and auth can-i update still answers yes, which hides the gap."; \
+	    fi; \
+	    exit 1; \
+	  fi; \
+	done; \
+	echo "==> and nothing else"; \
+	for probe in "delete deployments" "get secrets" "create pods" "update deployments"; do \
+	  answer=$$($(KUBECTL) exec deploy/$(TAIL) -- kubectl auth can-i $$probe 2>/dev/null || true); \
+	  printf '    %-22s %s\n' "$$probe" "$$answer"; \
+	  if [[ "$$answer" == "yes" ]]; then \
+	    echo "FAIL: the tail can '$$probe' -- the Role is wider than one scale"; exit 1; \
+	  fi; \
+	done; \
+	echo "==> scaling to zero from inside the pod, which is what M7's snapshot does"; \
+	$(KUBECTL) exec deploy/$(TAIL) -- kubectl scale deploy/$(TAIL) --replicas=0; \
+	$(KUBECTL) wait --for=delete pod -l app.kubernetes.io/name=$(TAIL) --timeout=90s; \
+	echo "==> the template clone M7 takes in that window"; \
+	$(KUBECTL) exec sts/$(SINK_STS) -- psql -U $(SINK_PGUSER) -d postgres -q \
+	  -c 'DROP DATABASE IF EXISTS pit_verify_snap;' \
+	  -c 'CREATE DATABASE pit_verify_snap TEMPLATE $(PIT_DB);' \
+	  -c 'DROP DATABASE pit_verify_snap;'; \
+	echo "==> scaling back up"; \
+	$(KUBECTL) scale deploy/$(TAIL) --replicas=1; \
+	$(KUBECTL) rollout status deploy/$(TAIL) --timeout=3m; \
+	echo "PASS: the tail runs, scales itself to zero and back, and can do nothing else"
 
 # ---- churn -----------------------------------------------------------------
 # The seed gives one state; churn gives a timeline with distinguishable points in

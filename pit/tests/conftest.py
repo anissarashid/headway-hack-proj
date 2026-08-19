@@ -53,3 +53,25 @@ def sink_dsn() -> str:
     if not dsn:
         pytest.skip("set PIT_TEST_SINK_DSN to run the tests that need a live sink")
     return dsn
+
+
+def reset_offsets(conn) -> None:
+    """Empty ``pit_meta.applied_offsets``.
+
+    Every test in this suite shares one database, and unlike the payload tables
+    the bookkeeping table is not namespaced per test -- there is deliberately one
+    per database, because it describes the database. So a test that writes an
+    offset leaks into any later test that asserts on the whole table.
+
+    Call this at both ends of a fixture that touches offsets. Truncate rather than
+    drop: the table is what `ensure_schema` created, and recreating it would test
+    the fixture instead of the code.
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(
+            "select 1 from information_schema.tables "
+            "where table_schema = 'pit_meta' and table_name = 'applied_offsets'"
+        )
+        if cursor.fetchone():
+            cursor.execute('truncate table pit_meta."applied_offsets"')
+    conn.commit()

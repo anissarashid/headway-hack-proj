@@ -1,23 +1,24 @@
 """``pit`` -- the point-in-time replica CLI.
 
-One subcommand so far. ``pit tail`` arrives with DATA-715's consumer, and
-``replay``/``snapshot``/``restore`` with M6 and M7; each is added when it can
-actually do its job rather than as a stub that exits non-zero.
+``replay``, ``snapshot`` and ``restore`` arrive with M6 and M7; each is added
+when it can actually do its job rather than as a stub that exits non-zero.
 
-    pit initdb --db pit_base                     # schemas from the registry
-    pit initdb --db pit_base --schema-dir DIR     # schemas from files
+    pit initdb --db pit_base                      # schemas from the registry
+    pit initdb --db pit_base --schema-dir DIR      # schemas from files
+    pit tail   --db pit_base                      # keep pit_base current
 """
 
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
 import psycopg
 from psycopg import sql
 
-from . import config, ddl, registry
+from . import config, ddl, registry, tail
 
 
 def initdb(args: argparse.Namespace) -> int:
@@ -80,6 +81,26 @@ def initdb(args: argparse.Namespace) -> int:
     return 0
 
 
+def tail_command(args: argparse.Namespace) -> int:
+    """Keep the sink database current: reconcile its schema, apply what arrives.
+
+    Creates the database if it is not there, for the same reason `initdb` does --
+    a tail that cannot start because nobody ran `initdb` first is a dependency
+    between two commands that does not need to exist.
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+    )
+    created = ensure_database(args.db)
+    if created:
+        logging.getLogger("pit.tail").info("created database %s", args.db)
+
+    client = registry.Registry(base_url=args.registry or config.registry_url())
+    return tail.run(args.db, client, interval=args.interval, once=args.once)
+
+
 def database_exists(name: str) -> bool:
     with psycopg.connect(config.sink_dsn(config.MAINTENANCE_DATABASE)) as conn:
         with conn.cursor() as cursor:
@@ -140,6 +161,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init.add_argument("-v", "--verbose", action="store_true", help="print each statement run")
     init.set_defaults(handler=initdb)
+
+    tail_parser = subcommands.add_parser(
+        "tail",
+        help="keep the sink database current with the registered clean schemas",
+        description=tail_command.__doc__,
+    )
+    tail_parser.add_argument(
+        "--db",
+        default=config.BASE_DATABASE,
+        help=f"database to keep current (default: {config.BASE_DATABASE})",
+    )
+    tail_parser.add_argument(
+        "--registry",
+        default=None,
+        help="schema registry base URL (default: $PIT_REGISTRY_URL or localhost:8081)",
+    )
+    tail_parser.add_argument(
+        "--interval",
+        type=float,
+        default=tail.DEFAULT_INTERVAL_SECONDS,
+        help=f"seconds between passes (default: {tail.DEFAULT_INTERVAL_SECONDS:.0f})",
+    )
+    tail_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="run a single pass and exit, rather than looping",
+    )
+    tail_parser.set_defaults(handler=tail_command)
 
     return parser
 
