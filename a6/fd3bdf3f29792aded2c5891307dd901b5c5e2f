@@ -1,0 +1,41 @@
+deid/src/deid/policy.py
+  s_bff7c62b370eee::t_5a180dafc7dffb 184-225,357-369,393,407,409-478,486-499,679-682,684
+deid/uv.lock
+  s_bff7c62b370eee::t_9146124c6a5588 28,36-104,212-220
+Makefile
+  s_bff7c62b370eee::t_7ef900677a6d46 234-237,242-261
+README.md
+  s_bff7c62b370eee::t_17e0f7b5ba48d6 51-53,184,186,207,215-217,221-266
+deid/pyproject.toml
+  s_bff7c62b370eee::t_04a7a0effad069 9-11,16-18,20-23
+deid/src/deid/__init__.py
+  s_bff7c62b370eee::t_f20e97622076bb 4-6,11
+deid/src/deid/avro.py
+  s_bff7c62b370eee::t_233b39f50beb12 1-207
+deid/src/deid/vocab.py
+  s_bff7c62b370eee::t_4f01aef68c27fe 1-74
+deid/tests/test_avro.py
+  s_bff7c62b370eee::t_10cd737ae52cee 1-179
+deid/tests/test_ops.py
+  s_bff7c62b370eee::t_94e4cec87511ad 1-1007
+deid/tests/test_policy.py
+  s_bff7c62b370eee::t_22488042e743cc 32-33,36,102-200,250,254
+deid/src/deid/ops.py
+  s_bff7c62b370eee::t_540e43552e5102 1-1023
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "a6fd3bdf3f29792aded2c5891307dd901b5c5e2f",
+  "prompts": {},
+  "sessions": {
+    "s_bff7c62b370eee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2eaf6c43-46b5-4671-8a5c-e87a57f02bdc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Anissa Rashid <anissarashid@users.noreply.github.com>"
+    }
+  }
+}
