@@ -7,5 +7,8 @@ charts/**/charts/*.tgz
 # Python / uv
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
+
+# macOS
+.DS_Store

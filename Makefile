@@ -20,6 +20,8 @@ TAG        ?= dev
 STS        ?= $(RELEASE)-source-pg
 PGUSER     ?= pit
 PGDATABASE ?= pit
+# Local port `forward` maps source-pg onto; the loadgen DSN defaults here too.
+LOCAL_PORT ?= 5432
 
 KUBECTL := kubectl --context $(PROFILE) -n $(NAMESPACE)
 HELM    := helm
@@ -32,7 +34,7 @@ DEID_CTX    := deid
 PITCTL_CTX  := pit
 
 # svc:localport:remoteport for `forward`. Services not yet deployed are skipped.
-FORWARDS := pit-console:8080:8080 pit-redpanda:8081:8081 connect:8083:8083 $(STS):5432:5432 sink-pg:5433:5432
+FORWARDS := pit-console:8080:8080 pit-redpanda:8081:8081 connect:8083:8083 $(STS):$(LOCAL_PORT):5432 sink-pg:5433:5432
 
 .DEFAULT_GOAL := help
 
@@ -191,6 +193,48 @@ forward: ## Port-forward console/registry/connect/postgres (skips undeployed ser
 .PHONY: psql
 psql: ## Open a psql shell in the source Postgres pod
 	$(KUBECTL) exec -it sts/$(STS) -- psql -U $(PGUSER) -d $(PGDATABASE)
+
+# ---- load generation -------------------------------------------------------
+.PHONY: loadgen-deps
+loadgen-deps: ## Create the loadgen venv and install pinned dependencies
+	cd loadgen && $(UV) sync
+
+.PHONY: seed
+seed: ## Populate the clinic schema with synthetic data (needs `make forward`)
+	cd loadgen && $(UV) python -m loadgen.seed --reset
+
+.PHONY: seed-fingerprint
+seed-fingerprint: ## Digest whatever is currently in the clinic tables
+	@cd loadgen && $(UV) python -m loadgen.seed --fingerprint
+
+.PHONY: seed-test
+seed-test: ## Unit tests for the generator; no database required
+	cd loadgen && $(UV) pytest
+
+.PHONY: seed-verify
+seed-verify: ## DATA-701 acceptance check: same seed, same rows, twice over
+	@set -euo pipefail; \
+	cd loadgen; \
+	echo "==> generator tests (no database)"; \
+	PIT_TEST_DSN="$${PIT_DSN:-host=127.0.0.1 port=$(LOCAL_PORT) user=$(PGUSER) password=pit-dev-password dbname=$(PGDATABASE)}" \
+		$(UV) pytest; \
+	echo "==> seeding twice and comparing what landed"; \
+	$(UV) python -m loadgen.seed --reset --quiet >/dev/null; \
+	first=$$($(UV) python -m loadgen.seed --fingerprint --quiet); \
+	$(UV) python -m loadgen.seed --reset --quiet >/dev/null; \
+	second=$$($(UV) python -m loadgen.seed --fingerprint --quiet); \
+	generated=$$($(UV) python -m loadgen.seed --dry-run --quiet); \
+	echo "    run 1     $$first"; \
+	echo "    run 2     $$second"; \
+	echo "    generated $$generated"; \
+	if [[ "$$first" != "$$second" ]]; then \
+		echo "FAIL: two runs with the same seed produced different rows"; exit 1; \
+	fi; \
+	if [[ "$$first" != "$$generated" ]]; then \
+		echo "FAIL: the stored rows differ from the generated ones"; exit 1; \
+	fi; \
+	$(UV) python -m loadgen.seed --fingerprint 2>&1 >/dev/null; \
+	echo "PASS: the seed is reproducible and the row counts match the config"
 
 # ---- logs ------------------------------------------------------------------
 .PHONY: logs-source-pg logs-deid logs-connect logs-tail

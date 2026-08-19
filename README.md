@@ -41,6 +41,9 @@ charts/pit/                    umbrella Helm chart
     connect/                   Debezium + Avro Connect         (M3)
     deid/                      de-identification transformer   (M4)
     pitctl/                    pit-tail / snapshot / restore   (M5/M7)
+loadgen/                       deterministic synthetic load generator   (M2)
+  src/loadgen/config.py        seed constant, counts, distributions
+  src/loadgen/seed.py          the generator, loader and CLI
 scripts/
   verify-conf-docker.sh        cluster-free check of the rendered chart
   verify-schema.sql            schema + ledger assertions, run by both paths
@@ -65,6 +68,10 @@ make forward     # port-forward console/registry (+ connect/postgres once they e
 # verify the broker and registry answer:
 curl -s localhost:8081/subjects      # -> []   (no schemas registered yet)
 open  http://localhost:8080          # Redpanda Console
+
+# populate the source database (needs `make forward` running):
+make seed        # wipe and repopulate the clinic schema
+make seed-verify # load generator acceptance check
 
 make nuke        # tear everything down, including PVCs
 ```
@@ -260,3 +267,36 @@ foreign keys, and that inserts, updates, cascade deletes and `SET NULL` all land
 in the ledger with the right before and after images. It works on a loaded
 database as well as an empty one: the fixtures are created inside a transaction
 that is rolled back at the end.
+
+## Load generator
+
+`loadgen/` fills the schema with synthetic patients, providers, appointments,
+claims and notes. Everything it produces is fake — it takes an integer and
+returns rows, with no network, no filesystem and no clock involved.
+
+```
+make loadgen-deps   # uv sync
+make forward        # in another shell
+make seed           # wipe and repopulate
+make seed-verify    # acceptance check
+```
+
+Two runs with the same seed produce identical row contents, so two people
+debugging the same failure are looking at the same rows and M8's determinism
+test has a stable baseline. `seed-verify` proves it by seeding twice and
+comparing a digest of what landed, which also catches anything the load itself
+mangles on the way into Postgres — a `numeric` rounded, a timezone lost.
+
+Shape matters more than volume: appointments are apportioned across patients by
+largest remainder over lognormal weights, so a few patients carry dozens of
+visits, most have one or two, and some have none. The awkward cases the
+de-identification policy has to survive are planted rather than sampled — null
+emails, a patient past the Safe Harbor age cap, a zip starting with a zero,
+decimal money at both ends of `numeric(12,2)`, unicode names across six scripts,
+SSNs in five formats, and PHI woven into `notes.body` — and the generator
+refuses to return a dataset that is missing any of them.
+
+The whole seed lands in one transaction, so the ledger records it at a single
+`tx_at`: a point-in-time query before that instant sees an empty database and
+one after it sees the whole population, with no half-loaded state in between for
+a replay to land on. `loadgen/README.md` has the details.
