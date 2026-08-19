@@ -17,8 +17,9 @@ data:
         WITH LOGIN REPLICATION PASSWORD '${PIT_REPLICATION_PASSWORD}';
 
       -- Debezium's snapshot phase reads the tables directly, so the role needs
-      -- ordinary SELECT on top of REPLICATION. Schema objects arrive in a later
-      -- ticket; these defaults make sure the grants apply when they do.
+      -- ordinary SELECT on top of REPLICATION. This runs before the 20- schema
+      -- scripts, so the ALTER DEFAULT PRIVILEGES is what actually grants the
+      -- clinic tables -- the GRANT ON ALL TABLES below finds nothing yet.
       GRANT CONNECT ON DATABASE "${POSTGRES_DB}" TO "${PIT_REPLICATION_USER}";
       GRANT USAGE ON SCHEMA public TO "${PIT_REPLICATION_USER}";
       GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${PIT_REPLICATION_USER}";
@@ -27,6 +28,16 @@ data:
     EOSQL
 
     echo "source-pg: replication role '${PIT_REPLICATION_USER}' created"
+  {{- if .Values.clinicSchema.enabled }}
+  # Real .sql files under files/initdb/ rather than inline templates: the SQL is
+  # long, has no need of the environment, and is easier to review as SQL. They
+  # land in the same ConfigMap as the script above so the entrypoint sees one
+  # directory and the StatefulSet's checksum/initdb annotation covers them.
+  {{- range $path, $_ := .Files.Glob "files/initdb/*.sql" }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+  {{- end }}
   {{- range $name, $content := .Values.extraInitScripts }}
   {{ $name }}: |
     {{- $content | nindent 4 }}

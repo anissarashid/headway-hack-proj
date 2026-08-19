@@ -72,8 +72,21 @@ verify: ## DATA-699 acceptance check: pod ready and wal_level=logical
 		"select pg_drop_replication_slot('pit_verify');" >/dev/null; \
 	echo "PASS: wal_level=logical and logical slot creation works"
 
+.PHONY: verify-schema
+verify-schema: ## DATA-700 acceptance check: tables, REPLICA IDENTITY FULL, history triggers
+	@set -euo pipefail; \
+	echo "==> captured tables"; \
+	kubectl exec -n $(NAMESPACE) sts/$(STS) -- \
+		psql -U $(PGUSER) -d $(PGDATABASE) -c 'table pit_captured_tables;'; \
+	echo "==> running scripts/verify-schema.sql"; \
+	kubectl exec -i -n $(NAMESPACE) sts/$(STS) -- \
+		psql -U $(PGUSER) -d $(PGDATABASE) --no-psqlrc -f - < scripts/verify-schema.sql
+
+.PHONY: verify-all
+verify-all: verify verify-schema ## Both acceptance checks against the cluster
+
 .PHONY: verify-docker
-verify-docker: ## Same check without a cluster: run the rendered conf under plain docker
+verify-docker: ## Same checks without a cluster: run the rendered chart under plain docker
 	@./scripts/verify-conf-docker.sh
 
 ## ---- day-to-day ----

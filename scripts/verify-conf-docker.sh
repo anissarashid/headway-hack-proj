@@ -114,4 +114,28 @@ if [[ $repl != t ]]; then
   exit 1
 fi
 
-echo "PASS: wal_level=logical, logical slot creation works, '$REPL_USER' has REPLICATION"
+# Debezium's snapshot phase reads the tables directly, so REPLICATION is not
+# enough on its own. The grant comes from ALTER DEFAULT PRIVILEGES in the role
+# script, which only works because it runs before the schema is created.
+ungranted=$(q "select count(*) from pg_class c
+               join pg_namespace n on n.oid = c.relnamespace
+               where n.nspname = 'public' and c.relkind = 'r'
+                 and not has_table_privilege('$REPL_USER', c.oid, 'select');" | tr -d '\r')
+if [[ $ungranted != 0 ]]; then
+  echo "FAIL: '$REPL_USER' cannot SELECT $ungranted table(s) in public"
+  q "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public' and c.relkind = 'r'
+       and not has_table_privilege('$REPL_USER', c.oid, 'select');"
+  exit 1
+fi
+
+echo "PASS: wal_level=logical, logical slot creation works, '$REPL_USER' has REPLICATION and SELECT"
+
+# --- schema ---------------------------------------------------------------
+# The same assertions `make verify-schema` runs in-cluster.
+echo "==> captured tables"
+docker exec "$CONTAINER" psql -U "$PGUSER" -d "$PGDATABASE" -c 'table pit_captured_tables;'
+
+echo "==> running scripts/verify-schema.sql"
+docker exec -i "$CONTAINER" psql -U "$PGUSER" -d "$PGDATABASE" --no-psqlrc -f - \
+  < "$(dirname "$0")/verify-schema.sql"

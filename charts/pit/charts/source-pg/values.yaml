@@ -48,9 +48,15 @@ extraPostgresqlConf: |
   datestyle = 'iso, mdy'
   default_text_search_config = 'pg_catalog.english'
 
+# The clinic schema and its mutation ledger, from files/initdb/*.sql. Off gives
+# you a bare Postgres with logical decoding and nothing to decode; the rest of
+# the pipeline assumes on.
+clinicSchema:
+  enabled: true
+
 # Extra files dropped into /docker-entrypoint-initdb.d, keyed by filename.
 # Sorted lexically by the entrypoint, so prefix with a number. The chart's own
-# scripts use the 10- prefix; downstream schema work should use 20- and up.
+# scripts use 10- (roles) and 20- (schema); anything else should use 30- and up.
 extraInitScripts: {}
 
 service:
