@@ -30,11 +30,8 @@ UV      := uv run
 # component -> docker build context. Dockerfiles arrive in later milestones
 # (connect=M3, deid=M4, pitctl=M5); build steps skip cleanly until then.
 CONNECT_CTX := images/connect
-DEID_CTX    := deid
-PITCTL_CTX  := pit
-
-# svc:localport:remoteport for `forward`. Services not yet deployed are skipped.
-FORWARDS := pit-console:8080:8080 pit-redpanda:8081:8081 pit-connect:8083:8083 $(STS):$(LOCAL_PORT):5432 sink-pg:5433:5432
+DEID_CTX    := images/deid
+PITCTL_CTX  := images/pitctl
 
 .DEFAULT_GOAL := help
 
@@ -130,7 +127,11 @@ verify-schema: ## DATA-700 acceptance check: tables, REPLICA IDENTITY FULL, hist
 		psql -U $(PGUSER) -d $(PGDATABASE) --no-psqlrc -f - < scripts/verify-schema.sql
 
 .PHONY: verify-all
-verify-all: verify verify-schema ## Both acceptance checks against the cluster
+verify-all: verify-m1 verify verify-schema ## All acceptance checks against the cluster
+
+.PHONY: verify-m1
+verify-m1: ## DATA-698 acceptance check: broker, registry and console reachable
+	@hack/verify.sh
 
 .PHONY: verify-docker
 verify-docker: ## Same checks without a cluster: run the rendered chart under plain docker
@@ -165,7 +166,7 @@ load: ## Load built images into the minikube profile
 
 .PHONY: reload
 reload: build load install ## Rebuild images, load them, and roll the affected deployments
-	@for d in connect deid pit-tail; do \
+	@for d in $(RELEASE)-connect $(RELEASE)-deid pit-tail; do \
 	  if $(KUBECTL) get deploy $$d >/dev/null 2>&1; then \
 	    $(KUBECTL) rollout restart deploy/$$d; \
 	  fi; \
@@ -173,22 +174,12 @@ reload: build load install ## Rebuild images, load them, and roll the affected d
 
 # ---- access ----------------------------------------------------------------
 .PHONY: forward
-forward: ## Port-forward console/registry/connect/postgres (skips undeployed services)
-	@echo "Forwarding (Ctrl-C to stop):"; \
-	pids=""; \
-	for f in $(FORWARDS); do \
-	  svc=$${f%%:*}; rest=$${f#*:}; lp=$${rest%%:*}; rp=$${rest##*:}; \
-	  if $(KUBECTL) get svc $$svc >/dev/null 2>&1; then \
-	    echo "  $$svc  localhost:$$lp -> $$rp"; \
-	    $(KUBECTL) port-forward svc/$$svc $$lp:$$rp >/dev/null 2>&1 & \
-	    pids="$$pids $$!"; \
-	  else \
-	    echo "  $$svc  (not deployed yet — pending)"; \
-	  fi; \
-	done; \
-	trap "kill $$pids 2>/dev/null" INT TERM EXIT; \
-	echo "  ready — Ctrl-C to stop"; \
-	wait
+forward: ## Port-forward console/registry/connect/postgres in the background
+	@hack/forward.sh start
+
+.PHONY: forward-stop
+forward-stop: ## Stop the background port-forwards
+	@hack/forward.sh stop
 
 .PHONY: psql
 psql: ## Open a psql shell in the source Postgres pod
@@ -210,6 +201,33 @@ seed-fingerprint: ## Digest whatever is currently in the clinic tables
 .PHONY: seed-test
 seed-test: ## Unit tests for the generator; no database required
 	cd loadgen && $(UV) pytest
+
+# ---- churn -----------------------------------------------------------------
+# The seed gives one state; churn gives a timeline with distinguishable points in
+# it. Bounded three ways (duration, transactions, ledger rows) because cleaned
+# topics run at infinite retention on a laptop PVC.
+CHURN_DURATION ?= 5m
+CHURN_RATE     ?= 2
+
+.PHONY: churn
+churn: ## Apply continuous inserts/updates/deletes to the seeded schema (needs `make forward`)
+	cd loadgen && $(UV) python -m loadgen --duration $(CHURN_DURATION) --rate $(CHURN_RATE)
+
+.PHONY: churn-verify
+churn-verify: ## Check the ledger: append-only, monotonic tx_at, replays to the live tables
+	@cd loadgen && $(UV) python -m loadgen --verify
+
+.PHONY: churn-check
+churn-check: ## DATA-702 acceptance check: rows move, and the ledger records every mutation
+	@set -euo pipefail; \
+	cd loadgen; \
+	echo "==> churn tests, including the ones that need a database"; \
+	PIT_TEST_DSN="$${PIT_DSN:-host=127.0.0.1 port=$(LOCAL_PORT) user=$(PGUSER) password=pit-dev-password dbname=$(PGDATABASE)}" \
+		$(UV) pytest tests/test_churn.py; \
+	echo "==> a clean seed, then a minute of churn against it"; \
+	$(UV) python -m loadgen.seed --reset --quiet >/dev/null; \
+	$(UV) python -m loadgen --duration 60s --rate 4 --quiet; \
+	echo "PASS: the timeline has distinguishable points and the ledger replays to the live tables"
 
 .PHONY: seed-verify
 seed-verify: ## DATA-701 acceptance check: same seed, same rows, twice over
