@@ -1,0 +1,32 @@
+# The deid image builds from the repo root (it needs the `deid` package), so the
+# context is the whole tree unless it is excluded here. Everything the image
+# actually needs is listed in images/deid/Dockerfile: deid/pyproject.toml,
+# deid/uv.lock, deid/src and images/deid/entrypoint.sh.
+#
+# images/connect builds with its own directory as the context and is unaffected.
+
+.git
+.github
+*.md
+!deid/**/*.md
+
+# Charts, and the policy they mount. The policy is deliberately not in the image.
+charts
+deid/policy
+
+# Other components.
+loadgen
+spikes
+hack
+scripts
+
+# Local artifacts. A .venv copied into the context would be both large and wrong
+# for the image's platform.
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.hypothesis
+**/.ruff_cache
+**/.mypy_cache
+deid/tests

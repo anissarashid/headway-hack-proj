@@ -23,13 +23,22 @@ check "namespace exists"          "$NS"      "$("${KC[@]}" get ns "$NS" -o name 
 check "broker replicas"           "1/1"      "$("${KC[@]}" get sts "$RELEASE-redpanda" -o jsonpath='{.status.readyReplicas}/{.spec.replicas}' 2>/dev/null || echo MISSING)"
 
 echo "== rendered manifest invariants =="
-r=$(helm template "$RELEASE" charts/pit -n "$NS" -f charts/pit/values-local.yaml 2>/dev/null)
+# --set-file: the deid subchart has no default policy, so the umbrella does not
+# render without it. Passing it here keeps this checking the same manifest
+# `make install` deploys rather than a subset that happens to render.
+r=$(helm template "$RELEASE" charts/pit -n "$NS" -f charts/pit/values-local.yaml \
+  --set-file deid.policy.contents=deid/policy/clinic.yml 2>/dev/null)
 check "no cert-manager Certificates" "0" "$(grep -c 'kind: Certificate' <<< "$r")"
 check "no NodePort services"         "0" "$(grep -c 'type: NodePort'    <<< "$r")"
 check "schema registry listener on"  "8081" "$(grep -A4 'schema_registry_api:' <<< "$r" | grep -oE 'port: 8081' | head -1 || echo MISSING)"
 
 echo "== endpoints (needs 'make forward') =="
-check "schema registry /subjects" "[]"    "$(curl -fsS --max-time 5 localhost:8081/subjects 2>/dev/null || echo UNREACHABLE)"
+# Answers with a subject list, rather than answers with an *empty* one. It was
+# empty when this check was written and has not been since M3: the connector
+# registers raw.* subjects and the transformer registers clean.* ones, so
+# asserting emptiness turned a liveness check into a check that nothing
+# downstream had run yet.
+check "schema registry answers"   "json"  "$(curl -fsS --max-time 5 localhost:8081/subjects 2>/dev/null | grep -qE '^\[' && echo json || echo UNREACHABLE)"
 check "admin API ready"           "ready" "$(curl -fsS --max-time 5 localhost:9644/v1/status/ready 2>/dev/null || echo UNREACHABLE)"
 check "console responds"          "200"   "$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 5 localhost:8080 2>/dev/null || echo UNREACHABLE)"
 

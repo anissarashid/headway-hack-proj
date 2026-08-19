@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "deid.fullname" . }}
+  labels:
+    {{- include "deid.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # Recreate, not RollingUpdate. A rolling update would briefly run two
+  # consumers in one group, which triggers a rebalance and hands partitions to a
+  # pod that is about to die. Stopping first costs a few seconds of lag and
+  # nothing else -- the runner commits offsets only for records the broker has
+  # acknowledged, so whatever it had in flight is simply re-read.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "deid.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "deid.selectorLabels" . | nindent 8 }}
+      annotations:
+        # The policy is parsed once, at startup, so a changed policy has to roll
+        # the pod. Without this, `helm upgrade` would update the ConfigMap and
+        # leave the old rules running.
+        checksum/policy: {{ include "deid.policyContents" . | sha256sum }}
+        checksum/salt: {{ .Values.salt.existingSecret | default .Values.salt.value | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      # The runner traps SIGTERM, finishes the batch it is on, flushes the
+      # producer and commits. 30s is generous for a batch of 500 records and
+      # keeps a shutdown from turning into a replay of the last batch.
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - name: policy
+          configMap:
+            name: {{ include "deid.fullname" . }}-policy
+      containers:
+        - name: deid
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+            - name: policy
+              mountPath: {{ .Values.policy.mountPath | quote }}
+              readOnly: true
+          env:
+            - name: DEID_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: DEID_REGISTRY_URL
+              value: {{ .Values.schemaRegistryUrl | quote }}
+            - name: DEID_GROUP_ID
+              value: {{ .Values.consumerGroup | quote }}
+            - name: PIT_POLICY_PATH
+              value: {{ include "deid.policyPath" . | quote }}
+            # No default in the code, on purpose: read from the clock, the HIPAA
+            # age cap would give the same record a different answer on a
+            # different day and replay would stop being reproducible.
+            - name: DEID_REFERENCE_DATE
+              value: {{ .Values.referenceDate | quote }}
+            # Also no default in the code. A salt with a default is a
+            # configuration in which the transformer de-identifies with a key
+            # anyone can guess.
+            - name: DEID_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "deid.saltSecret" . }}
+                  key: {{ .Values.salt.key | quote }}
+            - name: DEID_CLEAN_PARTITIONS
+              value: {{ .Values.topics.partitions | quote }}
+            - name: DEID_CLEAN_REPLICATION_FACTOR
+              value: {{ .Values.topics.replicationFactor | quote }}
+            - name: DEID_SCHEMA_WAIT_SECONDS
+              value: {{ .Values.schemaWaitSeconds | quote }}
+            - name: DEID_BATCH_SIZE
+              value: {{ .Values.batchSize | quote }}
+            - name: DEID_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
